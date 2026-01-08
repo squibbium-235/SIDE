@@ -342,7 +342,11 @@ html, body {
 .scroll::-webkit-scrollbar-corner {
     background: #0b0d12
 }
-    
+
+:root {
+    color-scheme: dark;
+}
+
 "#;
 
     template

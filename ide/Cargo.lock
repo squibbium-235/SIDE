@@ -1821,6 +1821,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "dioxus",
+ "dioxus-desktop",
  "rfd 0.17.1",
 ]
 

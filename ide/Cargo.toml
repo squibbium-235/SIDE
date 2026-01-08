@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 base64 = "0.22.1"
 dioxus = { version = "0.7.2", features = ["desktop"] }
+dioxus-desktop = "0.7.2"
 rfd = "0.17.1"
 

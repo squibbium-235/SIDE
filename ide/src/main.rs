@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dioxus::prelude::*;
-use rfd::FileDialog;
+use dioxus::launch;
+use rfd::AsyncFileDialog;
 use std::{fs, path::PathBuf};
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -288,25 +289,36 @@ pub fn app() -> Element {
                                 onclick: move |_| {
                                     file_open.set(false);
 
-                                    if let Some(path) = FileDialog::new()
-                                        .add_filter("Text", &["txt", "rs", "toml", "md"])
-                                        .pick_file()
-                                    {
-                                        match fs::read_to_string(&path) {
-                                            Ok(contents) => {
-                                                let mut s = st();
-                                                s.lines = split_lines(&contents);
-                                                s.cursor = Cursor { line: 0, col: 0 };
-                                                st.set(s);
+                                    // clone the signals into the async block
+                                    let mut st = st.clone();
+                                    let mut current_path = current_path.clone();
+                                    let mut status = status.clone();
 
-                                                current_path.set(Some(path.clone()));
-                                                status.set(format!("Opened {}", path.display()));
+                                    async move {
+                                        if let Some(handle) = AsyncFileDialog::new()
+                                            .add_filter("All files", &["*"])
+                                            .pick_file()
+                                            .await
+                                        {
+                                            let path = handle.path().to_path_buf();
+
+                                            match std::fs::read_to_string(&path) {
+                                                Ok(contents) => {
+                                                    let mut s = st();
+                                                    s.lines = split_lines(&contents);
+                                                    s.cursor = Cursor { line: 0, col: 0 };
+                                                    st.set(s);
+
+                                                    current_path.set(Some(path.clone()));
+                                                    status.set(format!("Opened {}", path.display()));
+                                                }
+                                                Err(err) => status.set(format!("Open failed: {}", err)),
                                             }
-                                            Err(err) => status.set(format!("Open failed: {}", err)),
                                         }
                                     }
                                 },
-                                "Open…"
+
+                                "Open"
                             }
 
                             // Save…
@@ -315,24 +327,32 @@ pub fn app() -> Element {
                                 onclick: move |_| {
                                     file_open.set(false);
 
-                                    if let Some(path) = current_path() {
-                                        let text = join_lines(&st().lines);
-                                        match fs::write(&path, text) {
-                                            Ok(()) => status.set(format!("Saved {}", path.display())),
-                                            Err(err) => status.set(format!("Save failed: {}", err)),
-                                        }
-                                    } else if let Some(path) = FileDialog::new()
-                                        .add_filter("Text", &["txt", "rs", "toml", "md"])
-                                        .save_file()
-                                    {
-                                        let text = join_lines(&st().lines);
-                                        match fs::write(&path, text) {
-                                            Ok(()) => {
-                                                current_path.set(Some(path.clone()));
-                                                status.set(format!("Saved {}", path.display()));
+                                    let mut st = st.clone();
+                                    let mut current_path = current_path.clone();
+                                    let mut status = status.clone();
+
+                                    async move {
+                                        if let Some(path) = current_path() {
+                                            let text = join_lines(&st().lines);
+                                            match std::fs::write(&path, text) {
+                                                Ok(()) => status.set(format!("Saved {}", path.display())),
+                                                Err(err) => status.set(format!("Save failed: {}", err)),
                                             }
-                                            Err(err) => status.set(format!("Save failed: {}", err)),
-                                        }
+                                        } else if let Some(handle) = AsyncFileDialog::new()
+                                            .save_file()
+                                            .await
+                                            {
+                                                let path = handle.path().to_path_buf();
+                                                let text = join_lines(&st().lines);
+
+                                                match std::fs::write(&path, text) {
+                                                    Ok(()) => {
+                                                        current_path.set(Some(path.clone()));
+                                                        status.set(format!("Saved {}", path.display()));
+                                                    }
+                                                    Err(err) => status.set(format!("Save failed: {}", err)),
+                                                }
+                                            }
                                     }
                                 },
                                 "Save"
@@ -344,21 +364,34 @@ pub fn app() -> Element {
                                 onclick: move |_| {
                                     file_open.set(false);
 
-                                    if let Some(path) = FileDialog::new()
-                                        .add_filter("Text", &["txt", "rs", "toml", "md"])
-                                        .save_file()
-                                    {
-                                        let text = join_lines(&st().lines);
-                                        match fs::write(&path, text) {
-                                            Ok(()) => {
-                                                current_path.set(Some(path.clone()));
-                                                status.set(format!("Saved {}", path.display()));
+                                    // clone signals into the async task
+                                    let mut st = st.clone();
+                                    let mut current_path = current_path.clone();
+                                    let mut status = status.clone();
+
+                                    async move {
+                                        if let Some(handle) = AsyncFileDialog::new()
+                                            .add_filter("All files", &["*"])
+                                            .save_file()
+                                            .await
+                                        {
+                                            let path = handle.path().to_path_buf();
+                                            let text = join_lines(&st().lines);
+
+                                            match std::fs::write(&path, text) {
+                                                Ok(()) => {
+                                                    current_path.set(Some(path.clone()));
+                                                    status.set(format!("Saved {}", path.display()));
+                                                }
+                                                Err(err) => {
+                                                    status.set(format!("Save failed: {}", err));
+                                                }
                                             }
-                                            Err(err) => status.set(format!("Save failed: {}", err)),
                                         }
                                     }
                                 },
-                                "Save As…"
+
+                                "Save AS"
                             }
 
                             div { class: "menu-sep" }
@@ -563,6 +596,24 @@ fn move_down(s: &mut EditorState) {
     }
 }
 
-fn main() {
-    dioxus::launch(app);
+fn main() -> ! {
+    use dioxus_desktop::{Config, WindowBuilder};
+    use std::any::Any;
+
+    let cfg = Config::new()
+        .with_menu(None)
+        .with_window(
+            WindowBuilder::new()
+                .with_title("IDE")
+                .with_always_on_top(false),
+        );
+
+    // launch(root, contexts, platform_config)
+    dioxus_desktop::launch::launch(
+        app,
+        Vec::<Box<dyn Fn() -> Box<dyn Any> + Send + Sync>>::new(),
+        vec![Box::new(cfg)],
+    )
 }
+
+

@@ -1,0 +1,148 @@
+default_color = "#D4D4D4"
+
+# -----------------------------
+# Comments (highest priority)
+# -----------------------------
+
+[[rule]]
+name = "doc_comment"
+pattern = "///.*$|//!.*$"
+color = "#4FC1FF"
+priority = 200
+
+[[rule]]
+name = "comment_line"
+pattern = "//.*$"
+color = "#6A9955"
+priority = 190
+
+# Rust regex doesn't do true multiline; this catches /* ... */ if it's on one line.
+[[rule]]
+name = "comment_block_singleline"
+pattern = "/\\*.*?\\*/"
+color = "#6A9955"
+priority = 180
+
+# -----------------------------
+# Strings / chars
+# -----------------------------
+
+# Raw strings: r"..." r#"..."# r##"..."## (single-line)
+[[rule]]
+name = "raw_string"
+pattern = "r(#*)\".*?\"\\1"
+color = "#CE9178"
+priority = 170
+
+[[rule]]
+name = "string"
+pattern = "\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 165
+
+[[rule]]
+name = "char"
+pattern = "'([^'\\\\]|\\\\.)'"
+color = "#D7BA7D"
+priority = 164
+
+# -----------------------------
+# Attributes and macros
+# -----------------------------
+
+[[rule]]
+name = "attribute"
+pattern = "#\\!?\\[[^\\]]*\\]"
+color = "#C586C0"
+priority = 160
+
+[[rule]]
+name = "macro"
+pattern = "\\b[A-Za-z_][A-Za-z0-9_]*!"
+color = "#DCDCAA"
+priority = 155
+
+# -----------------------------
+# Keywords and special words
+# -----------------------------
+
+[[rule]]
+name = "keyword"
+pattern = "\\b(as|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|true|type|unsafe|use|where|while|async|await)\\b"
+color = "#569CD6"
+priority = 150
+
+[[rule]]
+name = "control_keywords"
+pattern = "\\b(try|yield)\\b"
+color = "#569CD6"
+priority = 149
+
+# Common result/option variants
+[[rule]]
+name = "option_result_variants"
+pattern = "\\b(Some|None|Ok|Err)\\b"
+color = "#4EC9B0"
+priority = 148
+
+# -----------------------------
+# Types (builtins + common std)
+# -----------------------------
+
+[[rule]]
+name = "primitive_types"
+pattern = "\\b(bool|char|str|String|usize|isize|u8|u16|u32|u64|u128|i8|i16|i32|i64|i128|f32|f64)\\b"
+color = "#4EC9B0"
+priority = 140
+
+[[rule]]
+name = "common_std_types"
+pattern = "\\b(Vec|Option|Result|Box|Rc|Arc|Cow|Cell|RefCell|HashMap|HashSet|BTreeMap|BTreeSet|VecDeque|LinkedList|Path|PathBuf|String|OsStr|OsString)\\b"
+color = "#4EC9B0"
+priority = 139
+
+# -----------------------------
+# Lifetimes, constants, paths
+# -----------------------------
+
+[[rule]]
+name = "lifetime"
+pattern = "'[A-Za-z_][A-Za-z0-9_]*"
+color = "#C586C0"
+priority = 135
+
+# SCREAMING_SNAKE_CASE constants (heuristic)
+[[rule]]
+name = "constant"
+pattern = "\\b[A-Z][A-Z0-9_]{2,}\\b"
+color = "#DCDCAA"
+priority = 134
+
+# Module/type paths: std::io::Read
+[[rule]]
+name = "path"
+pattern = "\\b[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)+\\b"
+color = "#9CDCFE"
+priority = 133
+
+# -----------------------------
+# Function calls (heuristic)
+# -----------------------------
+
+# word followed by '(' looks like a call: foo( ... )
+# Avoid matching keywords by giving this lower priority than keyword rule.
+[[rule]]
+name = "function_call"
+pattern = "\\b[A-Za-z_][A-Za-z0-9_]*\\s*(?=\\()"
+color = "#DCDCAA"
+priority = 120
+
+# -----------------------------
+# Numbers (including suffixes)
+# -----------------------------
+
+[[rule]]
+name = "number"
+pattern = "\\b\\d+(?:_\\d+)*(?:\\.\\d+(?:_\\d+)*)?(?:[eE][+-]?\\d+)?(?:u8|u16|u32|u64|u128|usize|i8|i16|i32|i64|i128|isize|f32|f64)?\\b"
+color = "#B5CEA8"
+priority = 110

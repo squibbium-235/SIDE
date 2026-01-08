@@ -3,6 +3,8 @@ use dioxus::prelude::*;
 use rfd::AsyncFileDialog;
 use std::path::PathBuf;
 
+mod syntax;
+
 #[derive(Clone, Copy, Debug, Default)]
 struct Cursor {
     line: usize,
@@ -239,6 +241,8 @@ html, body {
 .line {
   height: var(--line-h);
   pointer-events: none;
+  white-space: pre;
+  tab-size: 4;
 }
 
 .line.active {
@@ -338,6 +342,7 @@ async fn open_dialog_and_load(
     mut current_path: Signal<Option<PathBuf>>,
     mut dirty: Signal<bool>,
     mut status: Signal<String>,
+    mut current_language: Signal<String>,
 ) {
     if let Some(handle) = AsyncFileDialog::new().pick_file().await {
         let path = handle.path().to_path_buf();
@@ -349,6 +354,8 @@ async fn open_dialog_and_load(
                 st.set(s);
 
                 current_path.set(Some(path.clone()));
+            current_language.set(crate::syntax::detect_language_from_path(&path));
+                current_language.set(crate::syntax::detect_language_from_path(&path));
                 dirty.set(false);
                 status.set(format!("Opened {}", path.display()));
             }
@@ -362,12 +369,14 @@ async fn save_to_path(
     mut current_path: Signal<Option<PathBuf>>,
     mut dirty: Signal<bool>,
     mut status: Signal<String>,
+    mut current_language: Signal<String>,
     path: PathBuf,
 ) {
     let text = join_lines(&st().lines);
     match std::fs::write(&path, text) {
         Ok(()) => {
             current_path.set(Some(path.clone()));
+            current_language.set(crate::syntax::detect_language_from_path(&path));
             dirty.set(false);
             status.set(format!("Saved {}", path.display()));
         }
@@ -380,15 +389,16 @@ async fn save_or_save_as(
     current_path: Signal<Option<PathBuf>>,
     dirty: Signal<bool>,
     status: Signal<String>,
+    current_language: Signal<String>,
 ) {
     if let Some(p) = current_path() {
-        save_to_path(st, current_path, dirty, status, p).await;
+        save_to_path(st, current_path, dirty, status, current_language, p).await;
         return;
     }
 
     if let Some(handle) = AsyncFileDialog::new().save_file().await {
         let path = handle.path().to_path_buf();
-        save_to_path(st, current_path, dirty, status, path).await;
+        save_to_path(st, current_path, dirty, status, current_language, path).await;
     }
 }
 
@@ -397,10 +407,11 @@ async fn save_as(
     current_path: Signal<Option<PathBuf>>,
     dirty: Signal<bool>,
     status: Signal<String>,
+    current_language: Signal<String>,
 ) {
     if let Some(handle) = AsyncFileDialog::new().save_file().await {
         let path = handle.path().to_path_buf();
-        save_to_path(st, current_path, dirty, status, path).await;
+        save_to_path(st, current_path, dirty, status, current_language, path).await;
     }
 }
 
@@ -415,9 +426,14 @@ pub fn app() -> Element {
 
     let mut current_path = use_signal(|| Option::<PathBuf>::None);
     let mut dirty = use_signal(|| false);
+    let mut current_language = use_signal(|| "plain".to_string());
 
     let mut confirm_open = use_signal(|| false);
     let mut pending_action = use_signal(|| PendingAction::None);
+
+    // for smooth scrolling
+    let mut scroll_top = use_signal(|| 0.0f64);
+    let mut viewport_h = use_signal(|| 600.0f64); // chatGPTs random guess
 
     let file_label = {
         let name = current_path()
@@ -475,6 +491,7 @@ pub fn app() -> Element {
                                     do_new(st.clone());
                                     current_path.set(None);
                                     dirty.set(false);
+                                    current_language.set("plain".to_string());
                                     status.set("New file".to_string());
                                 },
                                 "New"
@@ -496,7 +513,8 @@ pub fn app() -> Element {
                                     let cp2 = current_path.clone();
                                     let dirty2 = dirty.clone();
                                     let status2 = status.clone();
-                                    spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2).await; });
+                                    let lang2 = current_language.clone();
+                                    spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await; });
                                 },
                                 "Open"
                             }
@@ -511,7 +529,8 @@ pub fn app() -> Element {
                                     let cp2 = current_path.clone();
                                     let dirty2 = dirty.clone();
                                     let status2 = status.clone();
-                                    spawn(async move { save_or_save_as(st2, cp2, dirty2, status2).await; });
+                                    let lang2 = current_language.clone();
+                                    spawn(async move { save_or_save_as(st2, cp2, dirty2, status2, lang2).await; });
                                 },
                                 "Save"
                             }
@@ -526,7 +545,8 @@ pub fn app() -> Element {
                                     let cp2 = current_path.clone();
                                     let dirty2 = dirty.clone();
                                     let status2 = status.clone();
-                                    spawn(async move { save_as(st2, cp2, dirty2, status2).await; });
+                                    let lang2 = current_language.clone();
+                                    spawn(async move { save_as(st2, cp2, dirty2, status2, lang2).await; });
                                 },
                                 "Save As"
                             }
@@ -563,12 +583,12 @@ pub fn app() -> Element {
                 div {
                     class: "scroll",
                     tabindex: "0",
+                    id:"scrollpane",
 
                     onscroll: move |e| {
-                        let mut s = st();
-                        s.scroll_y = e.data().scroll_top();
-                        s.scroll_x = e.data().scroll_left();
-                        st.set(s);
+                        let d = e.data();
+                        scroll_top.set(d.scroll_top() as f64);
+                        viewport_h.set(d.client_height() as f64);
                     },
 
                     onkeydown: move |e| {
@@ -652,11 +672,21 @@ pub fn app() -> Element {
                                 )
                             }
 
-                            // lines
+                            // lines (with syntax highlighting)
                             for (i, line) in st().lines.iter().enumerate() {
-                                div {
-                                    class: if i == st().cursor.line { "line active" } else { "line" },
-                                    "{line}"
+                                {
+                                    let spans = crate::syntax::highlight_line(&current_language(), line);
+                                    rsx!(
+                                        div {
+                                            class: if i == st().cursor.line { "line active" } else { "line" },
+                                            for sp in spans {
+                                                span {
+                                                    style: "color: {sp.color};",
+                                                    "{sp.text}"
+                                                }
+                                            }
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -710,7 +740,8 @@ pub fn app() -> Element {
                                             let cp2 = current_path.clone();
                                             let dirty2 = dirty.clone();
                                             let status2 = status.clone();
-                                            spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2).await; });
+                                    let lang2 = current_language.clone();
+                                            spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await; });
                                         }
                                         PendingAction::ExitApp => {
                                             dioxus_desktop::window().close();
@@ -733,10 +764,11 @@ pub fn app() -> Element {
                                     let mut cp2 = current_path.clone();
                                     let mut dirty2 = dirty.clone();
                                     let mut status2 = status.clone();
+                                    let mut lang2 = current_language.clone();
                                     let mut pending2 = pending_action.clone();
 
                                     spawn(async move {
-                                        save_or_save_as(st2.clone(), cp2.clone(), dirty2.clone(), status2.clone()).await;
+                                        save_or_save_as(st2.clone(), cp2.clone(), dirty2.clone(), status2.clone(), lang2.clone()).await;
 
                                         if !dirty2() {
                                             match pending2() {
@@ -747,7 +779,7 @@ pub fn app() -> Element {
                                                     status2.set("New file".to_string());
                                                 }
                                                 PendingAction::OpenFile => {
-                                                    open_dialog_and_load(st2, cp2, dirty2, status2).await;
+                                                    open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await;
                                                 }
                                                 PendingAction::ExitApp => {
                                                     dioxus_desktop::window().close();

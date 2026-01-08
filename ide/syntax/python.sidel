@@ -1,0 +1,43 @@
+default_color = "#D4D4D4"
+
+[[rule]]
+name = "comment"
+pattern = "#.*$"
+color = "#6A9955"
+priority = 100
+
+[[rule]]
+name = "triple_string"
+pattern = "('{3}.*?'{3}|\"{3}.*?\"{3})"
+color = "#CE9178"
+priority = 95
+
+[[rule]]
+name = "string"
+pattern = "(\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')"
+color = "#CE9178"
+priority = 90
+
+[[rule]]
+name = "keyword"
+pattern = "\\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\\b"
+color = "#569CD6"
+priority = 80
+
+[[rule]]
+name = "builtin"
+pattern = "\\b(abs|all|any|bool|bytes|callable|chr|dict|dir|enumerate|eval|filter|float|format|hash|help|hex|id|int|isinstance|len|list|map|max|min|next|object|oct|open|ord|pow|print|range|repr|reversed|round|set|slice|sorted|str|sum|tuple|type|zip)\\b"
+color = "#4EC9B0"
+priority = 75
+
+[[rule]]
+name = "number"
+pattern = "\\b\\d+(\\.\\d+)?\\b"
+color = "#B5CEA8"
+priority = 70
+
+[[rule]]
+name = "decorator"
+pattern = "@[A-Za-z_][A-Za-z0-9_\\.]*"
+color = "#C586C0"
+priority = 85

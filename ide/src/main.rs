@@ -315,6 +315,34 @@ html, body {
   background: rgba(88,135,255,0.18);
   border-color: rgba(88,135,255,0.35);
 }
+
+.scroll {
+    scrollbar_gutter: stable;
+}
+
+.scroll::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+.scroll::-webkit-scrollbar-track {
+    background: #0b0d12; // panel
+}
+
+.scroll::-webkit-scrollbar-thumb {
+    background-color: #2a3246;
+    border-radius: 8px;
+    border: 3px solid #0b0d12;
+}
+
+.scroll::-webkit-scrollbar-thumb:hover{
+    background-color: #3a4563;
+}
+
+.scroll::-webkit-scrollbar-corner {
+    background: #0b0d12
+}
+    
 "#;
 
     template

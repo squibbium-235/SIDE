@@ -153,7 +153,7 @@ html, body {
   position: absolute;
   top: 30px;
   left: 0;
-  min-width: 190px;
+  min-width: 250px;
   background: #0c0f16;
   border: 1px solid var(--border);
   box-shadow: 0 8px 30px rgba(0,0,0,0.35);
@@ -494,7 +494,7 @@ pub fn app() -> Element {
                                     current_language.set("plain".to_string());
                                     status.set("New file".to_string());
                                 },
-                                "New"
+                                "New - Ctrl+N"
                             }
 
                             // Open…
@@ -516,7 +516,7 @@ pub fn app() -> Element {
                                     let lang2 = current_language.clone();
                                     spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await; });
                                 },
-                                "Open"
+                                "Open - Ctrl+O"
                             }
 
                             // Save
@@ -532,7 +532,7 @@ pub fn app() -> Element {
                                     let lang2 = current_language.clone();
                                     spawn(async move { save_or_save_as(st2, cp2, dirty2, status2, lang2).await; });
                                 },
-                                "Save"
+                                "Save - Ctrl+S"
                             }
 
                             // Save As…
@@ -548,7 +548,7 @@ pub fn app() -> Element {
                                     let lang2 = current_language.clone();
                                     spawn(async move { save_as(st2, cp2, dirty2, status2, lang2).await; });
                                 },
-                                "Save As"
+                                "Save As - Ctrl+Shift+S"
                             }
 
                             div { class: "menu-sep" }
@@ -568,7 +568,7 @@ pub fn app() -> Element {
                                     // graceful close (desktop)
                                     dioxus_desktop::window().close();
                                 },
-                                "Exit"
+                                "Exit - Ctrl+Q"
                             }
                         }
                     }
@@ -592,6 +592,98 @@ pub fn app() -> Element {
                     },
 
                     onkeydown: move |e| {
+                        // ===== Keyboard shortcuts =====
+                        let kd = e.data();
+                        let m = kd.modifiers();
+                        let ctrl = m.ctrl() || m.meta(); // Ctrl (Win/Linux) or Cmd (macOS)
+                        let shift = m.shift();
+                        let key = kd.key();
+
+                        if ctrl {
+                            if let Key::Character(c) = key {
+                                match (shift, c.to_lowercase().as_str()) {
+                                    // Ctrl/Cmd + N : New File
+                                    (false, "n") => {
+                                        if dirty() {
+                                            pending_action.set(PendingAction::NewFile);
+                                            confirm_open.set(true);
+                                        } else {
+                                            do_new(st.clone());
+                                            current_path.set(None);
+                                            dirty.set(false);
+                                            current_language.set("plain".to_string());
+                                            status.set("New file".to_string());
+                                        }
+                                        e.prevent_default();
+                                        e.stop_propagation();
+                                        return;
+                                    },
+                                    // Ctrl/Cmd + O : Open
+                                    (false, "o") => {
+                                        if dirty() {
+                                            pending_action.set(PendingAction::OpenFile);
+                                            confirm_open.set(true);
+                                        } else {
+                                            let st2 = st.clone();
+                                            let cp2 = current_path.clone();
+                                            let dirty2 = dirty.clone();
+                                            let status2 = status.clone();
+                                            let lang2 = current_language.clone();
+                                            spawn(async move {
+                                                open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await;
+                                            });
+                                        }
+                                        e.prevent_default();
+                                        e.stop_propagation();
+                                        return;
+                                    },
+                                    // Ctrl/Cmd + S : Save
+                                    (false, "s") => {
+                                        let st2 = st.clone();
+                                        let cp2 = current_path.clone();
+                                        let dirty2 = dirty.clone();
+                                        let status2 = status.clone();
+                                        let lang2 = current_language.clone();
+                                        spawn(async move {
+                                            save_or_save_as(st2, cp2, dirty2, status2, lang2).await;
+                                        });
+                                        e.prevent_default();
+                                        e.stop_propagation();
+                                        return;
+                                    },
+                                    // Ctrl/Cmd + Shift + S : Save As
+                                    (true, "s") => {
+                                        let st2 = st.clone();
+                                        let cp2 = current_path.clone();
+                                        let dirty2 = dirty.clone();
+                                        let status2 = status.clone();
+                                        let lang2 = current_language.clone();
+                                        spawn(async move {
+                                            save_as(st2, cp2, dirty2, status2, lang2).await;
+                                        });
+                                        e.prevent_default();
+                                        e.stop_propagation();
+                                        return;
+                                    },
+                                    // Ctrl/Cmd + Q : Quit
+                                    (false, "q") => {
+                                        if dirty() {
+                                            pending_action.set(PendingAction::ExitApp);
+                                            confirm_open.set(true);
+                                        } else {
+                                            dioxus_desktop::window().close();
+                                        }
+                                        e.prevent_default();
+                                        e.stop_propagation();
+                                        return;
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        }
+
+                        // ===== Editor typing =====
+
                         let mut s = st();
                         let changed = handle_key(&mut s, e.data().key());
                         st.set(s);
@@ -764,7 +856,7 @@ pub fn app() -> Element {
                                     let mut cp2 = current_path.clone();
                                     let mut dirty2 = dirty.clone();
                                     let mut status2 = status.clone();
-                                    let mut lang2 = current_language.clone();
+                                    let lang2 = current_language.clone();
                                     let mut pending2 = pending_action.clone();
 
                                     spawn(async move {
@@ -907,16 +999,19 @@ fn move_down(s: &mut EditorState) {
 }
 
 fn main() {
-    use dioxus::desktop::{Config, WindowBuilder};
+    use dioxus::desktop::{Config, WindowBuilder, LogicalSize, LogicalPosition};
     use dioxus::LaunchBuilder;
 
     let cfg = Config::new()
         .with_menu(None) // removes the native "Window / Edit / Help" menu bar
         .with_window(
             WindowBuilder::new()
-                .with_title("IDE")
+                .with_title("Squibb IDE")
                 .with_decorations(true)      // keep titlebar + min/max/close
-                .with_always_on_top(false),  // optional
+                .with_always_on_top(false)  // optional
+                .with_inner_size(LogicalSize::new(800, 600)) // set default window size
+                .with_maximized(true)  // start maximized, this doesn't work... but fixes the window spawning in the corner, so it stays
+                .with_position(LogicalPosition::new(500, 200)), // set default window position
         );
 
     LaunchBuilder::desktop()

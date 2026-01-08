@@ -18,6 +18,7 @@ pub struct Syntax {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Rule {
     pub name: String,
     pub regex: Regex,
@@ -58,7 +59,7 @@ fn default_priority() -> i32 {
 }
 
 pub fn syntax_dir() -> PathBuf {
-    PathBuf::from("syntax")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("syntax")
 }
 
 pub fn detect_language_from_path(path: &Path) -> String {
@@ -77,7 +78,7 @@ pub fn detect_language_from_path(path: &Path) -> String {
         "css" => "css",
         "json" => "json",
         "md" => "markdown",
-        "sidel" => "sidel"
+        "sidel" => "sidel",
         _ => "plain",
     }
     .to_string()

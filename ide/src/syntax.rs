@@ -81,7 +81,7 @@ pub fn detect_language_from_path(path: &Path) -> String {
         "sidel" => "sidel",
         "c" | "h" => "c",
         "toml" => "toml",
-        "cpp" | "hpp" | "hh" | "hxx" | "cc" | "cxx" => "cpp"
+        "cpp" | "hpp" | "hh" | "hxx" | "cc" | "cxx" => "cpp",
         _ => "plain",
     }
     .to_string()

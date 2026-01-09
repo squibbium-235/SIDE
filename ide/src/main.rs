@@ -1038,7 +1038,7 @@ fn main() {
         .with_menu(None) // removes the native "Window / Edit / Help" menu bar
         .with_window(
             WindowBuilder::new()
-                .with_title("Squibb IDE")
+                .with_title("SIDE")
                 .with_decorations(true)      // keep titlebar + min/max/close
                 .with_always_on_top(false)  // optional
                 .with_inner_size(LogicalSize::new(800, 600)) // set default window size

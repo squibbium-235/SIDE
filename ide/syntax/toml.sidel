@@ -1,0 +1,121 @@
+default_color = "#D4D4D4"
+
+[[rule]]
+name = "comment"
+pattern = "#.*$"
+color = "#6A9955"
+priority = 200
+
+[[rule]]
+name = "array_table_header"
+pattern = "(?m)^\\s*\\[\\[[^\\]\\n]+\\]\\]\\s*$"
+color = "#C586C0"
+priority = 190
+
+[[rule]]
+name = "table_header"
+pattern = "(?m)^\\s*\\[[^\\]\\n]+\\]\\s*$"
+color = "#C586C0"
+priority = 189
+
+[[rule]]
+name = "dotted_key"
+pattern = "(?m)^\\s*[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+(?=\\s*=)"
+color = "#9CDCFE"
+priority = 180
+
+[[rule]]
+name = "quoted_key_basic"
+pattern = "(?m)^\\s*\"([^\"\\\\]|\\\\.)*\"(?=\\s*=)"
+color = "#9CDCFE"
+priority = 179
+
+[[rule]]
+name = "quoted_key_literal"
+pattern = "(?m)^\\s*'[^'\\n]*'(?=\\s*=)"
+color = "#9CDCFE"
+priority = 178
+
+[[rule]]
+name = "bare_key"
+pattern = "(?m)^\\s*[A-Za-z0-9_-]+(?=\\s*=)"
+color = "#9CDCFE"
+priority = 177
+
+[[rule]]
+name = "triple_basic_string_singleline"
+pattern = "\"\"\".*?\"\"\""
+color = "#CE9178"
+priority = 170
+
+[[rule]]
+name = "triple_literal_string_singleline"
+pattern = "'''.*?'''"
+color = "#CE9178"
+priority = 169
+
+[[rule]]
+name = "basic_string"
+pattern = "\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 165
+
+[[rule]]
+name = "literal_string"
+pattern = "'[^'\\n]*'"
+color = "#CE9178"
+priority = 164
+
+[[rule]]
+name = "date_local"
+pattern = "\\b\\d{4}-\\d{2}-\\d{2}\\b"
+color = "#4EC9B0"
+priority = 150
+
+[[rule]]
+name = "datetime"
+pattern = "\\b\\d{4}-\\d{2}-\\d{2}[Tt\\s]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})?\\b"
+color = "#4EC9B0"
+priority = 149
+
+[[rule]]
+name = "boolean"
+pattern = "\\b(true|false)\\b"
+color = "#569CD6"
+priority = 140
+
+[[rule]]
+name = "special_float"
+pattern = "\\b([+-]?inf|[+-]?nan)\\b"
+color = "#B5CEA8"
+priority = 139
+
+[[rule]]
+name = "int_radix"
+pattern = "\\b0x[0-9A-Fa-f](?:[0-9A-Fa-f_]*[0-9A-Fa-f])?\\b|\\b0o[0-7](?:[0-7_]*[0-7])?\\b|\\b0b[01](?:[01_]*[01])?\\b"
+color = "#B5CEA8"
+priority = 135
+
+[[rule]]
+name = "number"
+pattern = "\\b[+-]?\\d(?:[\\d_]*\\d)?(?:\\.\\d(?:[\\d_]*\\d)?)?(?:[eE][+-]?\\d(?:[\\d_]*\\d)?)?\\b"
+color = "#B5CEA8"
+priority = 134
+
+[[rule]]
+name = "equals"
+pattern = "="
+color = "#DCDCAA"
+priority = 50
+
+[[rule]]
+name = "brackets_braces"
+pattern = "[\\[\\]\\{\\}\\(\\)]"
+color = "#DCDCAA"
+priority = 49
+
+[[rule]]
+name = "comma"
+pattern = ","
+color = "#DCDCAA"
+priority = 48

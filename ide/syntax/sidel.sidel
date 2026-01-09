@@ -1,57 +1,103 @@
 default_color = "#D4D4D4"
 
+# -----------------------------
 # Comments
+# -----------------------------
 [[rule]]
 name = "comment"
 pattern = "#.*$"
 color = "#6A9955"
-priority = 200
+priority = 300
 
-# Section headers like [[rule]]
+# -----------------------------
+# Section headers: [[rule]]
+# -----------------------------
 [[rule]]
 name = "section"
 pattern = "\\[\\[[A-Za-z_][A-Za-z0-9_]*\\]\\]"
 color = "#C586C0"
-priority = 180
+priority = 260
 
-# Keys (left side of =)
+# -----------------------------
+# Keys (left side of =), including default_color
+# -----------------------------
 [[rule]]
 name = "key"
 pattern = "(?m)^\\s*[A-Za-z_][A-Za-z0-9_]*\\s*(?==)"
 color = "#9CDCFE"
-priority = 170
+priority = 240
 
-# Boolean literals
+# Make the common keys stand out slightly differently
+[[rule]]
+name = "known_keys"
+pattern = "\\b(default_color|rule|name|pattern|color|priority)\\b"
+color = "#4EC9B0"
+priority = 245
+
+# -----------------------------
+# Hex colors: "#RRGGBB" / "#RRGGBBAA"
+# -----------------------------
+[[rule]]
+name = "hex_color"
+pattern = "\"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\""
+color = "#DCDCAA"
+priority = 235
+
+# -----------------------------
+# Numbers (priority values etc.)
+# -----------------------------
+[[rule]]
+name = "number"
+pattern = "\\b\\d+(?:\\.\\d+)?\\b"
+color = "#B5CEA8"
+priority = 230
+
+# -----------------------------
+# Booleans
+# -----------------------------
 [[rule]]
 name = "bool"
 pattern = "\\b(true|false)\\b"
 color = "#569CD6"
-priority = 165
+priority = 225
 
-# Numbers
+# -----------------------------
+# Operators / punctuation
+# -----------------------------
 [[rule]]
-name = "number"
-pattern = "\\b\\d+(\\.\\d+)?\\b"
-color = "#B5CEA8"
-priority = 160
+name = "equals"
+pattern = "="
+color = "#D4D4D4"
+priority = 120
 
-# Strings (double quoted, with escapes)
+[[rule]]
+name = "brackets"
+pattern = "[\\[\\]]"
+color = "#D4D4D4"
+priority = 120
+
+# -----------------------------
+# Strings (general)
+# -----------------------------
 [[rule]]
 name = "string"
 pattern = "\"([^\"\\\\]|\\\\.)*\""
 color = "#CE9178"
-priority = 155
+priority = 200
 
-# Common rule properties in your format
+# Escape sequences inside strings: \\b \\d \\n \\t \\\" etc.
 [[rule]]
-name = "rule_fields"
-pattern = "\\b(default_color|name|pattern|color|priority|rule)\\b"
-color = "#4EC9B0"
-priority = 150
+name = "escape"
+pattern = "\\\\[\\\\\"'nrt0abfv]|\\\\x[0-9a-fA-F]{2}|\\\\u[0-9a-fA-F]{4}|\\\\U[0-9a-fA-F]{8}"
+color = "#D7BA7D"
+priority = 210
 
-# Operators and punctuation
+# -----------------------------
+# Special-case: pattern = "...." should look like regex, not a normal string
+# This highlights the *value* after pattern =
+# -----------------------------
 [[rule]]
-name = "punct"
-pattern = "[=\\[\\]\\(\\)\\{\\},]"
-color = "#DCDCAA"
-priority = 120
+name = "pattern_value"
+pattern = "(?m)^\\s*pattern\\s*=\\s*\"([^\"\\\\]|\\\\.)*\""
+color = "#C586C0"
+priority = 220

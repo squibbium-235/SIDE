@@ -79,6 +79,9 @@ pub fn detect_language_from_path(path: &Path) -> String {
         "json" => "json",
         "md" => "markdown",
         "sidel" => "sidel",
+        "c" | "h" => "c",
+        "toml" => "toml",
+        "cpp" | "hpp" | "hh" | "hxx" | "cc" | "cxx" => "cpp"
         _ => "plain",
     }
     .to_string()

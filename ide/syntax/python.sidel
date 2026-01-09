@@ -1,43 +1,154 @@
 default_color = "#D4D4D4"
 
+# -----------------------------
+# Comments
+# -----------------------------
 [[rule]]
 name = "comment"
 pattern = "#.*$"
 color = "#6A9955"
-priority = 100
+priority = 200
 
-[[rule]]
-name = "triple_string"
-pattern = "('{3}.*?'{3}|\"{3}.*?\"{3})"
-color = "#CE9178"
-priority = 95
-
-[[rule]]
-name = "string"
-pattern = "(\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')"
-color = "#CE9178"
-priority = 90
-
-[[rule]]
-name = "keyword"
-pattern = "\\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\\b"
-color = "#569CD6"
-priority = 80
-
-[[rule]]
-name = "builtin"
-pattern = "\\b(abs|all|any|bool|bytes|callable|chr|dict|dir|enumerate|eval|filter|float|format|hash|help|hex|id|int|isinstance|len|list|map|max|min|next|object|oct|open|ord|pow|print|range|repr|reversed|round|set|slice|sorted|str|sum|tuple|type|zip)\\b"
-color = "#4EC9B0"
-priority = 75
-
-[[rule]]
-name = "number"
-pattern = "\\b\\d+(\\.\\d+)?\\b"
-color = "#B5CEA8"
-priority = 70
-
+# -----------------------------
+# Decorators
+# -----------------------------
 [[rule]]
 name = "decorator"
 pattern = "@[A-Za-z_][A-Za-z0-9_\\.]*"
 color = "#C586C0"
-priority = 85
+priority = 190
+
+# -----------------------------
+# Docstrings (common cases)
+# - Start-of-line triple quotes (typical docstring placement)
+# - Single-line triple strings
+# -----------------------------
+[[rule]]
+name = "docstring_start"
+pattern = "(?m)^\\s*(\"\"\"|''')"
+color = "#4FC1FF"
+priority = 185
+
+[[rule]]
+name = "triple_string_singleline"
+pattern = "(\"\"\"[^\\n]*\"\"\"|'''[^\\n]*''')"
+color = "#CE9178"
+priority = 184
+
+# -----------------------------
+# Strings (with prefixes)
+# Supports: f, r, b, u and combos like rf, fr, rb, br (case-insensitive-ish)
+# -----------------------------
+[[rule]]
+name = "string_prefixed_double"
+pattern = "\\b(?i:[furb]{1,3})\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 180
+
+[[rule]]
+name = "string_prefixed_single"
+pattern = "\\b(?i:[furb]{1,3})'([^'\\\\]|\\\\.)*'"
+color = "#CE9178"
+priority = 179
+
+[[rule]]
+name = "string_double"
+pattern = "\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 178
+
+[[rule]]
+name = "string_single"
+pattern = "'([^'\\\\]|\\\\.)*'"
+color = "#CE9178"
+priority = 177
+
+# -----------------------------
+# Keywords and literals
+# -----------------------------
+[[rule]]
+name = "keyword"
+pattern = "\\b(False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|match|case)\\b"
+color = "#569CD6"
+priority = 170
+
+# -----------------------------
+# Builtins + common exceptions
+# -----------------------------
+[[rule]]
+name = "builtins"
+pattern = "\\b(abs|all|any|ascii|bin|bool|breakpoint|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|exec|filter|float|format|frozenset|getattr|globals|hasattr|hash|help|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|memoryview|min|next|object|oct|open|ord|pow|print|property|range|repr|reversed|round|set|setattr|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip)\\b"
+color = "#4EC9B0"
+priority = 165
+
+[[rule]]
+name = "exceptions"
+pattern = "\\b(Exception|BaseException|ValueError|TypeError|KeyError|IndexError|AttributeError|RuntimeError|NotImplementedError|ImportError|ModuleNotFoundError|OSError|IOError|FileNotFoundError|PermissionError|StopIteration|AssertionError)\\b"
+color = "#4EC9B0"
+priority = 164
+
+# -----------------------------
+# Class and function names
+# -----------------------------
+[[rule]]
+name = "def_name"
+pattern = "\\bdef\\s+([A-Za-z_][A-Za-z0-9_]*)"
+color = "#DCDCAA"
+priority = 160
+
+[[rule]]
+name = "class_name"
+pattern = "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)"
+color = "#4EC9B0"
+priority = 159
+
+# -----------------------------
+# Imports (highlight module names roughly)
+# -----------------------------
+[[rule]]
+name = "import_from"
+pattern = "\\bfrom\\s+[A-Za-z_][A-Za-z0-9_\\.]*\\b"
+color = "#9CDCFE"
+priority = 150
+
+[[rule]]
+name = "import_mod"
+pattern = "\\bimport\\s+[A-Za-z_][A-Za-z0-9_\\.]*\\b"
+color = "#9CDCFE"
+priority = 149
+
+# -----------------------------
+# Constants (heuristic)
+# -----------------------------
+[[rule]]
+name = "constant"
+pattern = "\\b[A-Z][A-Z0-9_]{2,}\\b"
+color = "#DCDCAA"
+priority = 140
+
+# -----------------------------
+# Numbers (int/float/hex/bin/oct)
+# -----------------------------
+[[rule]]
+name = "number_hex"
+pattern = "\\b0[xX][0-9a-fA-F_]+\\b"
+color = "#B5CEA8"
+priority = 130
+
+[[rule]]
+name = "number_bin"
+pattern = "\\b0[bB][01_]+\\b"
+color = "#B5CEA8"
+priority = 129
+
+[[rule]]
+name = "number_oct"
+pattern = "\\b0[oO][0-7_]+\\b"
+color = "#B5CEA8"
+priority = 128
+
+[[rule]]
+name = "number"
+pattern = "\\b\\d+(?:_\\d+)*(?:\\.\\d+(?:_\\d+)*)?(?:[eE][+-]?\\d+)?\\b"
+color = "#B5CEA8"
+priority = 127

@@ -1,0 +1,91 @@
+default_color = "#d4d4d4"
+
+# ---------------- Comments ----------------
+[[rule]]
+name = "comment_block"
+color = "#6A9955"
+pattern = "/\\*[\\s\\S]*?\\*/"
+
+[[rule]]
+name = "comment_line"
+color = "#6A9955"
+pattern = "//.*$"
+
+# ---------------- Preprocessor ----------------
+[[rule]]
+name = "preprocessor_directive"
+color = "#C586C0"
+pattern = "^\\s*#\\s*(include|define|undef|if|ifdef|ifndef|elif|else|endif|error|pragma|line)\\b"
+
+# Highlight the rest of a preprocessor line (after directive) slightly differently
+[[rule]]
+name = "preprocessor_body"
+color = "#D4D4D4"
+pattern = "^\\s*#\\s*(?:include|define|undef|if|ifdef|ifndef|elif|else|endif|error|pragma|line)\\b.*$"
+
+# #include <stdio.h>
+[[rule]]
+name = "include_angle"
+color = "#CE9178"
+pattern = "(?<=^\\s*#\\s*include\\s*)<[^>]+>"
+
+# #include "myheader.h"
+[[rule]]
+name = "include_quote"
+color = "#CE9178"
+pattern = "(?<=^\\s*#\\s*include\\s*)\"(\\\\.|[^\"])*\""
+
+# ---------------- Strings & chars ----------------
+[[rule]]
+name = "string"
+color = "#CE9178"
+pattern = "\"(\\\\.|[^\"])*\""
+
+[[rule]]
+name = "char"
+color = "#CE9178"
+pattern = "'(\\\\.|[^'])+'"
+
+# Escape sequences inside strings/chars (may overlap; harmless if your engine doesn't support overlap)
+[[rule]]
+name = "escape"
+color = "#D7BA7D"
+pattern = "\\\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{1,3}|[abfnrtv\\\\'\"?])"
+
+# ---------------- Numbers ----------------
+# Hex, binary, decimals, floats, exponent, suffixes (u/l/ll/f)
+[[rule]]
+name = "number"
+color = "#B5CEA8"
+pattern = "\\b(0x[0-9A-Fa-f]+|0b[01]+|\\d+\\.\\d*|\\d*\\.\\d+|\\d+)([eE][+-]?\\d+)?([uU]?[lL]{0,2}|[fF])?\\b"
+
+# ---------------- Keywords ----------------
+[[rule]]
+name = "keyword"
+color = "#569CD6"
+pattern = "\\b(_Alignas|_Alignof|_Atomic|_Bool|_Complex|_Generic|_Imaginary|_Noreturn|_Static_assert|_Thread_local|auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|inline|int|long|register|restrict|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while)\\b"
+
+# ---------------- Types ----------------
+[[rule]]
+name = "type"
+color = "#4EC9B0"
+pattern = "\\b(bool|size_t|ssize_t|ptrdiff_t|wchar_t|va_list|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|intptr_t|uintptr_t)\\b"
+
+# ---------------- Constants ----------------
+[[rule]]
+name = "constant"
+color = "#4FC1FF"
+pattern = "\\b(NULL|true|false)\\b"
+
+# ---------------- Macros / ALL_CAPS identifiers ----------------
+[[rule]]
+name = "macro"
+color = "#C586C0"
+pattern = "\\b[A-Z_][A-Z0-9_]*\\b"
+
+# ---------------- Function names ----------------
+# Avoid highlighting control-flow keywords as functions: if( for( while( switch(
+[[rule]]
+name = "function"
+color = "#DCDCAA"
+pattern = "\\b(?!if\\b|for\\b|while\\b|switch\\b|return\\b|sizeof\\b)[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"

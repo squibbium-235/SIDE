@@ -2,6 +2,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dioxus::prelude::*;
 use rfd::AsyncFileDialog;
 use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
 
 mod syntax;
 
@@ -68,13 +69,82 @@ fn split_lines(text: &str) -> Vec<String> {
     v
 }
 
+/* ===== DIRECTORY FUNCTIONS ===== */
+
+#[derive(Clone, Debug)]
+struct DirEntryItem {
+    name: String,
+    path: PathBuf,
+    is_dir: bool,
+}
+
+async fn open_directory(
+    mut current_dir: Signal<Option<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut status: Signal<String>,
+) {
+    if let Some(handle) = AsyncFileDialog::new().pick_folder().await {
+        let root = handle.path().to_path_buf();
+
+        match list_directory_contents(&root) {
+            Ok(contents) => {
+                let mut cache = HashMap::new();
+                cache.insert(root.clone(), contents);
+                dir_cache.set(cache);
+
+                let mut expanded = HashSet::new();
+                expanded.insert(root.clone());
+                expanded_dirs.set(expanded);
+
+                current_dir.set(Some(root.clone()));
+                status.set(format!("Opened directory: {}", root.display()));
+            }
+            Err(err) => status.set(format!("Failed to list directory: {}", err)),
+        }
+    }
+}
+
+fn list_directory_contents(path: &PathBuf) -> std::io::Result<Vec<DirEntryItem>> {
+    let mut contents = Vec::new();
+
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_dir = path.is_dir();
+
+        contents.push(DirEntryItem { name, path, is_dir });
+    }
+
+    // Sort: directories first, then files, alphabetically (case-insensitive)
+    contents.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(contents)
+}
+
+fn close_directory(
+    mut current_dir: Signal<Option<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut status: Signal<String>,
+) {
+    current_dir.set(None);
+    dir_cache.set(HashMap::new());
+    expanded_dirs.set(HashSet::new());
+    status.set("Directory closed".to_string());
+}
+
 /// Build CSS + bundled font
 /// Place JetBrainsMono-Regular.ttf at: assets/fonts/JetBrainsMono-Regular.ttf
 fn bundled_css() -> String {
     const FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
     let b64 = STANDARD.encode(FONT_BYTES);
 
-    // Use a raw template string; avoid `format!` because CSS uses braces.
     let template = r#"
 @font-face {
   font-family: "BundledMono";
@@ -194,16 +264,25 @@ html, body {
 .editor-wrap {
   flex: 1;
   min-height: 0;
-}
-
-.scroll {
-  width: 100%;
-  height: 100%;
-  overflow: auto;
-  outline: none;
+  display: flex;
+  overflow: hidden;
 }
 
 .row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  display: flex;
+  overflow: auto;
+  outline: none;
+  min-width: 0;
+}
+
+.editor-content {
   display: flex;
   min-height: 100%;
 }
@@ -215,6 +294,7 @@ html, body {
   padding: var(--pad-y) 0;
   color: var(--muted);
   user-select: none;
+  flex-shrink: 0;
 }
 
 .ln {
@@ -234,7 +314,7 @@ html, body {
   padding: var(--pad-y) var(--pad-x);
   white-space: pre;
   line-height: var(--line-h);
-  min-width: 700px;
+  min-width: 400px;
 }
 
 /* Make clicks hit .textpane, not child .line divs */
@@ -255,6 +335,103 @@ html, body {
   height: var(--line-h);
   background: var(--caret);
   pointer-events: none;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 280px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.sidebar-collapsed {
+  width: 24px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.sidebar-collapsed:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.sidebar-header {
+  height: 34px;
+  padding: 0 12px;
+  background: rgba(0,0,0,0.2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-header:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.sidebar-title {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-collapse-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.sidebar-collapse-btn:hover {
+  color: var(--text);
+}
+
+.sidebar-contents {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.sidebar-item {
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.sidebar-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* ===== CONFIRM MODAL ===== */
@@ -326,7 +503,7 @@ html, body {
 }
 
 .scroll::-webkit-scrollbar-track {
-    background: #0b0d12; // panel
+    background: #0b0d12;
 }
 
 .scroll::-webkit-scrollbar-thumb {
@@ -340,7 +517,7 @@ html, body {
 }
 
 .scroll::-webkit-scrollbar-corner {
-    background: #0b0d12
+    background: #0b0d12;
 }
 
 :root {
@@ -355,7 +532,6 @@ html, body {
         .replace("__PAD_Y__", &format!("{PAD_Y_PX}"))
         .replace("__LINE_PX__", &format!("{}", line_px()))
         .replace("__FONT_PX__", &format!("{FONT_PX}"))
-        .replace("__LINE_PX__", &format!("{}", line_px()))
 }
 
 
@@ -386,7 +562,6 @@ async fn open_dialog_and_load(
                 st.set(s);
 
                 current_path.set(Some(path.clone()));
-            current_language.set(crate::syntax::detect_language_from_path(&path));
                 current_language.set(crate::syntax::detect_language_from_path(&path));
                 dirty.set(false);
                 status.set(format!("Opened {}", path.display()));
@@ -460,12 +635,18 @@ pub fn app() -> Element {
     let mut dirty = use_signal(|| false);
     let mut current_language = use_signal(|| "plain".to_string());
 
+    // New state for sidebar
+    let mut current_dir = use_signal(|| Option::<PathBuf>::None);
+    let mut dir_cache = use_signal(|| HashMap::<PathBuf, Vec<DirEntryItem>>::new());
+    let mut expanded_dirs = use_signal(|| HashSet::<PathBuf>::new());
+    let mut sidebar_collapsed = use_signal(|| false);
+
     let mut confirm_open = use_signal(|| false);
     let mut pending_action = use_signal(|| PendingAction::None);
 
     // for smooth scrolling
     let mut scroll_top = use_signal(|| 0.0f64);
-    let mut viewport_h = use_signal(|| 600.0f64); // chatGPTs random guess
+    let mut viewport_h = use_signal(|| 600.0f64);
 
     let file_label = {
         let name = current_path()
@@ -478,7 +659,148 @@ pub fn app() -> Element {
         format!("{name}{star}")
     };
 
+    // Prepare sidebar items BEFORE the rsx! macro to avoid syntax errors
+    let sidebar_items = if current_dir().is_some() && !sidebar_collapsed() {
+        let root = current_dir().unwrap();
+        let cache_snapshot = dir_cache();
+        let expanded_snapshot = expanded_dirs();
+
+        #[derive(Clone)]
+        struct Frame {
+            dir: PathBuf,
+            depth: usize,
+            idx: usize,
+            entries: Vec<DirEntryItem>,
+        }
+
+        let mut frames: Vec<Frame> = Vec::new();
+        let root_entries = cache_snapshot.get(&root).cloned().unwrap_or_default();
+        frames.push(Frame {
+            dir: root.clone(),
+            depth: 0,
+            idx: 0,
+            entries: root_entries,
+        });
+
+        let mut items = Vec::new();
+
+        while let Some(mut frame) = frames.pop() {
+            if frame.idx >= frame.entries.len() {
+                continue;
+            }
+
+            let depth = frame.depth;
+            let entry = frame.entries[frame.idx].clone();
+            frame.idx += 1;
+
+            // Put the frame back, so we continue iterating its siblings
+            frames.push(frame);
+
+            let path_for_click = entry.path.clone();
+            let path_for_tree = entry.path.clone();
+            let name_clone = entry.name.clone();
+            let is_dir = entry.is_dir;
+            let is_expanded = is_dir && expanded_snapshot.contains(&path_for_tree);
+            let disclosure = if is_dir {
+                if is_expanded { "▾" } else { "▸" }
+            } else {
+                " "
+            };
+            let icon = if is_dir { "📁" } else { "📄" };
+            let indent = 12 + (depth * 14);
+
+            let mut st_clone = st.clone();
+            let mut current_path_clone = current_path.clone();
+            let mut current_language_clone = current_language.clone();
+            let mut dirty_clone = dirty.clone();
+            let mut status_clone = status.clone();
+            let mut dir_cache_clone = dir_cache.clone();
+            let mut expanded_dirs_clone = expanded_dirs.clone();
+
+            let item = rsx! {
+                button {
+                    class: "sidebar-item",
+                    style: "padding-left: {indent}px;",
+                    onclick: move |_| {
+                        if is_dir {
+                            // Toggle expand/collapse
+                            let mut expanded = expanded_dirs_clone();
+                            let now_expanded = if expanded.contains(&path_for_click) {
+                                expanded.remove(&path_for_click);
+                                false
+                            } else {
+                                expanded.insert(path_for_click.clone());
+                                true
+                            };
+                            expanded_dirs_clone.set(expanded);
+
+                            // If expanding, lazily load children into cache
+                            if now_expanded {
+                                let mut cache = dir_cache_clone();
+                                if !cache.contains_key(&path_for_click) {
+                                    match list_directory_contents(&path_for_click) {
+                                        Ok(contents) => {
+                                            cache.insert(path_for_click.clone(), contents);
+                                            dir_cache_clone.set(cache);
+                                        }
+                                        Err(err) => {
+                                            status_clone.set(format!(
+                                                "Failed to list directory {}: {}",
+                                                name_clone, err
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Open file
+                            if dirty_clone() {
+                                status_clone.set("Unsaved changes: save or discard before opening another file".to_string());
+                                return;
+                            }
+
+                            match std::fs::read_to_string(&path_for_click) {
+                                Ok(contents) => {
+                                    let mut s = st_clone();
+                                    s.lines = split_lines(&contents);
+                                    s.cursor = Cursor { line: 0, col: 0 };
+                                    st_clone.set(s);
+
+                                    current_path_clone.set(Some(path_for_click.clone()));
+                                    current_language_clone.set(crate::syntax::detect_language_from_path(&path_for_click));
+                                    dirty_clone.set(false);
+                                    status_clone.set(format!("Opened {}", name_clone));
+                                }
+                                Err(err) => status_clone.set(format!("Open failed: {}", err)),
+                            }
+                        }
+                    },
+
+                    "{disclosure} {icon} {name_clone}"
+                }
+            };
+
+            items.push(item);
+
+            // Depth-first: if expanded dir, push its children
+            if is_dir && is_expanded {
+                let children = cache_snapshot.get(&path_for_tree).cloned().unwrap_or_default();
+                frames.push(Frame {
+                    dir: path_for_tree.clone(),
+                    depth: depth + 1,
+                    idx: 0,
+                    entries: children,
+                });
+            }
+        }
+
+        Some(items)
+    } else {
+        None
+    };
+
     rsx! {
+
         style { "{css}" }
 
         div {
@@ -551,6 +873,28 @@ pub fn app() -> Element {
                                 "Open - Ctrl+O"
                             }
 
+                            // Open Directory
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_open.set(false);
+                                    
+                                    if dirty() {
+                                        status.set("Save changes before opening directory".to_string());
+                                        return;
+                                    }
+                                    
+                                    let current_dir2 = current_dir.clone();
+                                    let dir_cache2 = dir_cache.clone();
+                                    let expanded_dirs2 = expanded_dirs.clone();
+                                    let status2 = status.clone();
+                                    spawn(async move { 
+                                        open_directory(current_dir2, dir_cache2, expanded_dirs2, status2).await; 
+                                    });
+                                },
+                                "Open Directory - Ctrl+Shift+O"
+                            }
+
                             // Save
                             button {
                                 class: "menu-item",
@@ -585,6 +929,18 @@ pub fn app() -> Element {
 
                             div { class: "menu-sep" }
 
+                            // Close Directory
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_open.set(false);
+                                    close_directory(current_dir.clone(), dir_cache.clone(), expanded_dirs.clone(), status.clone());
+                                },
+                                "Close Directory - Ctrl+Shift+C"
+                            }
+
+                            div { class: "menu-sep" }
+
                             // Exit
                             button {
                                 class: "menu-item",
@@ -613,208 +969,285 @@ pub fn app() -> Element {
             // ===== Editor =====
             div { class: "editor-wrap",
                 div {
-                    class: "scroll",
-                    tabindex: "0",
-                    id:"scrollpane",
+                    class: "row",
+                    
+                    // Sidebar - using pre-computed items
+                    if !sidebar_collapsed() && current_dir().is_some() {
+                        div {
+                            class: "sidebar",
+                            
+                            // Sidebar header
+                            div {
+                                class: "sidebar-header",
+                                onclick: move |_| sidebar_collapsed.set(true),
+                                
+                                if let Some(dir) = current_dir() {
+                                    span {
+                                        class: "sidebar-title",
+                                        title: "{dir.display()}",
+                                        "{dir.file_name().unwrap_or_default().to_string_lossy()}"
+                                    }
+                                } else {
+                                    span { class: "sidebar-title", "No directory open" }
+                                }
+                                
+                                button {
+                                    class: "sidebar-collapse-btn",
+                                    "×"
+                                }
+                            }
+                            
+                            // Directory contents
+                            div {
+                                class: "sidebar-contents",
+                                {
+                                    if let Some(items) = sidebar_items.as_ref() {
+                                        rsx!({items.iter()})
+                                    } else {
+                                        rsx!(div { class: "sidebar-empty", "No directory open" })
+                                    }
+                                }
+                            }
+                        }
+                    } else if sidebar_collapsed() && current_dir().is_some() {
+                        // Collapsed sidebar - just show a button to expand
+                        div {
+                            class: "sidebar-collapsed",
+                            onclick: move |_| sidebar_collapsed.set(false),
+                            "▶"
+                        }
+                    }
 
-                    onscroll: move |e| {
-                        let d = e.data();
-                        scroll_top.set(d.scroll_top() as f64);
-                        viewport_h.set(d.client_height() as f64);
-                    },
+                    // Editor content (gutter + textpane)
+                    div {
+                        class: "scroll",
+                        tabindex: "0",
+                        id:"scrollpane",
 
-                    onkeydown: move |e| {
-                        // ===== Keyboard shortcuts =====
-                        let kd = e.data();
-                        let m = kd.modifiers();
-                        let ctrl = m.ctrl() || m.meta(); // Ctrl (Win/Linux) or Cmd (macOS)
-                        let shift = m.shift();
-                        let key = kd.key();
+                        onscroll: move |e| {
+                            let d = e.data();
+                            scroll_top.set(d.scroll_top() as f64);
+                            viewport_h.set(d.client_height() as f64);
+                        },
 
-                        if ctrl {
-                            if let Key::Character(c) = key {
-                                match (shift, c.to_lowercase().as_str()) {
-                                    // Ctrl/Cmd + N : New File
-                                    (false, "n") => {
-                                        if dirty() {
-                                            pending_action.set(PendingAction::NewFile);
-                                            confirm_open.set(true);
-                                        } else {
-                                            do_new(st.clone());
-                                            current_path.set(None);
-                                            dirty.set(false);
-                                            current_language.set("plain".to_string());
-                                            status.set("New file".to_string());
-                                        }
-                                        e.prevent_default();
-                                        e.stop_propagation();
-                                        return;
-                                    },
-                                    // Ctrl/Cmd + O : Open
-                                    (false, "o") => {
-                                        if dirty() {
-                                            pending_action.set(PendingAction::OpenFile);
-                                            confirm_open.set(true);
-                                        } else {
+                        onkeydown: move |e| {
+                            // ===== Keyboard shortcuts =====
+                            let kd = e.data();
+                            let m = kd.modifiers();
+                            let ctrl = m.ctrl() || m.meta(); // Ctrl (Win/Linux) or Cmd (macOS)
+                            let shift = m.shift();
+                            let key = kd.key();
+
+                            if ctrl {
+                                if let Key::Character(c) = key {
+                                    match (shift, c.to_lowercase().as_str()) {
+                                        // Ctrl/Cmd + N : New File
+                                        (false, "n") => {
+                                            if dirty() {
+                                                pending_action.set(PendingAction::NewFile);
+                                                confirm_open.set(true);
+                                            } else {
+                                                do_new(st.clone());
+                                                current_path.set(None);
+                                                dirty.set(false);
+                                                current_language.set("plain".to_string());
+                                                status.set("New file".to_string());
+                                            }
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + O : Open
+                                        (false, "o") => {
+                                            if dirty() {
+                                                pending_action.set(PendingAction::OpenFile);
+                                                confirm_open.set(true);
+                                            } else {
+                                                let st2 = st.clone();
+                                                let cp2 = current_path.clone();
+                                                let dirty2 = dirty.clone();
+                                                let status2 = status.clone();
+                                                let lang2 = current_language.clone();
+                                                spawn(async move {
+                                                    open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await;
+                                                });
+                                            }
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + Shift + O : Open Directory
+                                        (true, "o") => {
+                                            let current_dir2 = current_dir.clone();
+                                            let dir_cache2 = dir_cache.clone();
+                                    let expanded_dirs2 = expanded_dirs.clone();
+                                            let status2 = status.clone();
+                                            spawn(async move {
+                                                open_directory(current_dir2, dir_cache2, expanded_dirs2, status2).await;
+                                            });
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + Shift + C : Close Directory
+                                        (true, "c") => {
+                                            close_directory(current_dir.clone(), dir_cache.clone(), expanded_dirs.clone(), status.clone());
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + S : Save
+                                        (false, "s") => {
                                             let st2 = st.clone();
                                             let cp2 = current_path.clone();
                                             let dirty2 = dirty.clone();
                                             let status2 = status.clone();
                                             let lang2 = current_language.clone();
                                             spawn(async move {
-                                                open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await;
+                                                save_or_save_as(st2, cp2, dirty2, status2, lang2).await;
                                             });
-                                        }
-                                        e.prevent_default();
-                                        e.stop_propagation();
-                                        return;
-                                    },
-                                    // Ctrl/Cmd + S : Save
-                                    (false, "s") => {
-                                        let st2 = st.clone();
-                                        let cp2 = current_path.clone();
-                                        let dirty2 = dirty.clone();
-                                        let status2 = status.clone();
-                                        let lang2 = current_language.clone();
-                                        spawn(async move {
-                                            save_or_save_as(st2, cp2, dirty2, status2, lang2).await;
-                                        });
-                                        e.prevent_default();
-                                        e.stop_propagation();
-                                        return;
-                                    },
-                                    // Ctrl/Cmd + Shift + S : Save As
-                                    (true, "s") => {
-                                        let st2 = st.clone();
-                                        let cp2 = current_path.clone();
-                                        let dirty2 = dirty.clone();
-                                        let status2 = status.clone();
-                                        let lang2 = current_language.clone();
-                                        spawn(async move {
-                                            save_as(st2, cp2, dirty2, status2, lang2).await;
-                                        });
-                                        e.prevent_default();
-                                        e.stop_propagation();
-                                        return;
-                                    },
-                                    // Ctrl/Cmd + Q : Quit
-                                    (false, "q") => {
-                                        if dirty() {
-                                            pending_action.set(PendingAction::ExitApp);
-                                            confirm_open.set(true);
-                                        } else {
-                                            dioxus_desktop::window().close();
-                                        }
-                                        e.prevent_default();
-                                        e.stop_propagation();
-                                        return;
-                                    },
-                                    _ => {}
-                                }
-                            }
-                        }
-
-                        // ===== Editor typing =====
-
-                        let mut s = st();
-                        let changed = handle_key(&mut s, e.data().key());
-                        st.set(s);
-
-                        if changed {
-                            dirty.set(true);
-                        }
-
-                        e.prevent_default();
-                        e.stop_propagation();
-                    },
-
-                    div { class: "row",
-                        // gutter
-                        div { class: "gutter",
-                            for (i, _) in st().lines.iter().enumerate() {
-                                div {
-                                    class: if i == st().cursor.line { "ln active" } else { "ln" },
-                                    "{i + 1}"
-                                }
-                            }
-                        }
-
-                        // text pane
-                        div {
-                            class: "textpane",
-
-                            onclick: move |e| {
-                                let mut s = st();
-                                let p = e.data().coordinates().element();
-
-                                // IMPORTANT: element() coords already behave "local enough" in your build.
-                                // Adding scroll here double-counts it, which is why clicks jump to the last line.
-                                let content_x = (p.x - PAD_X_PX) + CLICK_COL_BIAS_PX;
-                                let content_y =  p.y - PAD_Y_PX;
-
-                                if s.lines.is_empty() {
-                                    s.lines.push(String::new());
-                                }
-
-                                let mut line = if content_y <= 0.0 {
-                                    0
-                                } else {
-                                    (content_y / line_px()).floor() as usize
-                                };
-
-                                if line >= s.lines.len() {
-                                    line = s.lines.len() - 1;
-                                }
-
-                                let mut col = if content_x <= 0.0 {
-                                    0
-                                } else {
-                                    (content_x / char_px()).floor() as usize
-                                };
-
-                                let max_col = s.lines[line].len();
-                                if col > max_col {
-                                    col = max_col;
-                                }
-
-                                s.cursor = Cursor { line, col };
-                                st.set(s);
-                            },
-
-
-                            // caret
-                            {
-                                let s = st();
-                                let top = (s.cursor.line as f64) * line_px();
-                                let left = (s.cursor.col as f64) * char_px();
-
-                                rsx!(
-                                    div {
-                                        class: "caret",
-                                        style: "top: calc(var(--pad-y) + {top}px); left: calc(var(--pad-x) + {left}px);"
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + Shift + S : Save As
+                                        (true, "s") => {
+                                            let st2 = st.clone();
+                                            let cp2 = current_path.clone();
+                                            let dirty2 = dirty.clone();
+                                            let status2 = status.clone();
+                                            let lang2 = current_language.clone();
+                                            spawn(async move {
+                                                save_as(st2, cp2, dirty2, status2, lang2).await;
+                                            });
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + B : Toggle Sidebar
+                                        (false, "b") => {
+                                            sidebar_collapsed.set(!sidebar_collapsed());
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        // Ctrl/Cmd + Q : Quit
+                                        (false, "q") => {
+                                            if dirty() {
+                                                pending_action.set(PendingAction::ExitApp);
+                                                confirm_open.set(true);
+                                            } else {
+                                                dioxus_desktop::window().close();
+                                            }
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        },
+                                        _ => {}
                                     }
-                                )
+                                }
                             }
 
-                            // lines (with syntax highlighting)
-                            for (i, line) in st().lines.iter().enumerate() {
+                            // ===== Editor typing =====
+
+                            let mut s = st();
+                            let changed = handle_key(&mut s, e.data().key());
+                            st.set(s);
+
+                            if changed {
+                                dirty.set(true);
+                            }
+
+                            e.prevent_default();
+                            e.stop_propagation();
+                        },
+
+                        div { class: "editor-content",
+                            // gutter
+                            div { class: "gutter",
+                                for (i, _) in st().lines.iter().enumerate() {
+                                    div {
+                                        class: if i == st().cursor.line { "ln active" } else { "ln" },
+                                        "{i + 1}"
+                                    }
+                                }
+                            }
+
+                            // text pane
+                            div {
+                                class: "textpane",
+
+                                onclick: move |e| {
+                                    let mut s = st();
+                                    let p = e.data().coordinates().element();
+
+                                    let content_x = (p.x - PAD_X_PX) + CLICK_COL_BIAS_PX;
+                                    let content_y =  p.y - PAD_Y_PX;
+
+                                    if s.lines.is_empty() {
+                                        s.lines.push(String::new());
+                                    }
+
+                                    let mut line = if content_y <= 0.0 {
+                                        0
+                                    } else {
+                                        (content_y / line_px()).floor() as usize
+                                    };
+
+                                    if line >= s.lines.len() {
+                                        line = s.lines.len() - 1;
+                                    }
+
+                                    let mut col = if content_x <= 0.0 {
+                                        0
+                                    } else {
+                                        (content_x / char_px()).floor() as usize
+                                    };
+
+                                    let max_col = s.lines[line].len();
+                                    if col > max_col {
+                                        col = max_col;
+                                    }
+
+                                    s.cursor = Cursor { line, col };
+                                    st.set(s);
+                                },
+
+                                // caret
                                 {
-                                    let spans = crate::syntax::highlight_line(&current_language(), line);
+                                    let s = st();
+                                    let top = (s.cursor.line as f64) * line_px();
+                                    let left = (s.cursor.col as f64) * char_px();
+
                                     rsx!(
                                         div {
-                                            class: if i == st().cursor.line { "line active" } else { "line" },
-                                            for sp in spans {
-                                                span {
-                                                    style: "color: {sp.color};",
-                                                    "{sp.text}"
-                                                }
-                                            }
+                                            class: "caret",
+                                            style: "top: calc(var(--pad-y) + {top}px); left: calc(var(--pad-x) + {left}px);"
                                         }
                                     )
+                                }
+
+                                // lines (with syntax highlighting)
+                                for (i, line) in st().lines.iter().enumerate() {
+                                    {
+                                        let spans = crate::syntax::highlight_line(&current_language(), line);
+                                        rsx!(
+                                            div {
+                                                class: if i == st().cursor.line { "line active" } else { "line" },
+                                                for sp in spans {
+                                                    span {
+                                                        style: "color: {sp.color};",
+                                                        "{sp.text}"
+                                                    }
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+
                 }
             }
 
@@ -864,7 +1297,7 @@ pub fn app() -> Element {
                                             let cp2 = current_path.clone();
                                             let dirty2 = dirty.clone();
                                             let status2 = status.clone();
-                                    let lang2 = current_language.clone();
+                                            let lang2 = current_language.clone();
                                             spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await; });
                                         }
                                         PendingAction::ExitApp => {
@@ -1042,8 +1475,8 @@ fn main() {
                 .with_decorations(true)      // keep titlebar + min/max/close
                 .with_always_on_top(false)  // optional
                 .with_inner_size(LogicalSize::new(800, 600)) // set default window size
-                .with_maximized(true)  // start maximized, this doesn't work... but fixes the window spawning in the corner, so it stays
-                .with_position(LogicalPosition::new(500, 200)), // set default window position
+                .with_maximized(true)
+                .with_position(LogicalPosition::new(500, 200)),
         );
 
     LaunchBuilder::desktop()

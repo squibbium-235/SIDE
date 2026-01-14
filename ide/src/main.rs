@@ -1,8 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dioxus::prelude::*;
 use rfd::AsyncFileDialog;
-use std::path::PathBuf;
-use std::collections::{HashMap, HashSet};
+use std::{path::PathBuf, sync::Arc};
 
 mod syntax;
 
@@ -14,7 +13,7 @@ struct Cursor {
 
 #[derive(Clone, Debug)]
 struct EditorState {
-    lines: Vec<String>,
+    lines: Arc<Vec<String>>,
     cursor: Cursor,
     scroll_x: f64,
     scroll_y: f64,
@@ -23,7 +22,7 @@ struct EditorState {
 impl Default for EditorState {
     fn default() -> Self {
         Self {
-            lines: vec![String::new()],
+            lines: Arc::new(vec![String::new()]),
             cursor: Cursor::default(),
             scroll_x: 0.0,
             scroll_y: 0.0,
@@ -31,11 +30,43 @@ impl Default for EditorState {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
+struct Tab {
+    id: u64,
+    path: Option<PathBuf>,
+    language: String,
+    dirty: bool,
+    editor: EditorState,
+}
+
+
+impl Tab {
+    fn new_untitled(id: u64) -> Self {
+        Self {
+            id,
+            path: None,
+            language: "plain".to_string(),
+            dirty: false,
+            editor: EditorState::default(),
+        }
+    }
+
+    fn title(&self) -> String {
+        let name = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Untitled".to_string());
+        let star = if self.dirty { "*" } else { "" };
+        format!("{name}{star}")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 enum PendingAction {
     None,
-    NewFile,
-    OpenFile,
+    CloseTab(usize),
     ExitApp,
 }
 
@@ -57,11 +88,28 @@ fn char_px() -> f64 {
     FONT_PX * CHAR_WIDTH_RATIO
 }
 
+
+fn visible_range(scroll_top: f64, viewport_h: f64, total_lines: usize) -> (usize, usize, f64, f64) {
+    if total_lines == 0 {
+        return (0, 0, 0.0, 0.0);
+    }
+    let lp = line_px();
+    // Add a buffer so scrolling doesn't cause constant re-renders.
+    let buffer: usize = 20;
+    let start = ((scroll_top / lp).floor() as isize).max(0) as usize;
+    let visible = ((viewport_h / lp).ceil() as usize).saturating_add(buffer);
+    let end = (start + visible).min(total_lines);
+
+    let top_h = (start as f64) * lp;
+    let bottom_h = ((total_lines - end) as f64) * lp;
+    (start, end, top_h, bottom_h)
+}
+
 fn join_lines(lines: &[String]) -> String {
     lines.join("\n")
 }
 
-fn split_lines(text: &str) -> Vec<String> {
+fn split_lines_vec(text: &str) -> Vec<String> {
     let mut v: Vec<String> = text.split('\n').map(|s| s.to_string()).collect();
     if v.is_empty() {
         v.push(String::new());
@@ -69,73 +117,82 @@ fn split_lines(text: &str) -> Vec<String> {
     v
 }
 
-/* ===== DIRECTORY FUNCTIONS ===== */
-
-#[derive(Clone, Debug)]
-struct DirEntryItem {
-    name: String,
-    path: PathBuf,
-    is_dir: bool,
+fn split_lines(text: &str) -> Arc<Vec<String>> {
+    Arc::new(split_lines_vec(text))
 }
+
+fn next_tab_id(tabs: &[Tab]) -> u64 {
+    tabs.iter().map(|t| t.id).max().unwrap_or(0).saturating_add(1)
+}
+
+fn find_open_tab_index(tabs: &[Tab], path: &PathBuf) -> Option<usize> {
+    tabs.iter().position(|t| t.path.as_ref() == Some(path))
+}
+
+fn set_active_tab_editor<F: FnOnce(&mut Tab)>(mut tabs: Signal<Vec<Tab>>, active: Signal<usize>, f: F) {
+    let mut v = tabs();
+    let idx = active();
+    if let Some(t) = v.get_mut(idx) {
+        f(t);
+        tabs.set(v);
+    }
+}
+
+
+fn maybe_disable_highlighting(path: &PathBuf, language: String) -> String {
+    // Disable syntax highlighting for huge files because rendering and tokenising
+    // a million lines is a hobby for people who hate themselves.
+    const DISABLE_AT_BYTES: u64 = 2_000_000; // 2 MB
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() >= DISABLE_AT_BYTES {
+            return "plain".to_string();
+        }
+    }
+    language
+}
+
+/* ===== DIRECTORY FUNCTIONS ===== */
 
 async fn open_directory(
     mut current_dir: Signal<Option<PathBuf>>,
-    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
-    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_contents: Signal<Vec<(String, PathBuf)>>,
     mut status: Signal<String>,
 ) {
     if let Some(handle) = AsyncFileDialog::new().pick_folder().await {
-        let root = handle.path().to_path_buf();
-
-        match list_directory_contents(&root) {
+        let path = handle.path().to_path_buf();
+        match list_directory_contents(&path) {
             Ok(contents) => {
-                let mut cache = HashMap::new();
-                cache.insert(root.clone(), contents);
-                dir_cache.set(cache);
-
-                let mut expanded = HashSet::new();
-                expanded.insert(root.clone());
-                expanded_dirs.set(expanded);
-
-                current_dir.set(Some(root.clone()));
-                status.set(format!("Opened directory: {}", root.display()));
+                current_dir.set(Some(path.clone()));
+                dir_contents.set(contents);
+                status.set(format!("Opened directory: {}", path.display()));
             }
-            Err(err) => status.set(format!("Failed to list directory: {}", err)),
+            Err(err) => status.set(format!("Failed to list directory: {err}")),
         }
     }
 }
 
-fn list_directory_contents(path: &PathBuf) -> std::io::Result<Vec<DirEntryItem>> {
+fn list_directory_contents(path: &PathBuf) -> std::io::Result<Vec<(String, PathBuf)>> {
     let mut contents = Vec::new();
 
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
-        let path = entry.path();
+        let p = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_dir = path.is_dir();
-
-        contents.push(DirEntryItem { name, path, is_dir });
+        contents.push((name, p));
     }
 
-    // Sort: directories first, then files, alphabetically (case-insensitive)
-    contents.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
-
+    // Sort by name
+    contents.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(contents)
 }
 
 fn close_directory(
     mut current_dir: Signal<Option<PathBuf>>,
-    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
-    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_contents: Signal<Vec<(String, PathBuf)>>,
     mut status: Signal<String>,
 ) {
     current_dir.set(None);
-    dir_cache.set(HashMap::new());
-    expanded_dirs.set(HashSet::new());
+    dir_contents.set(Vec::new());
     status.set("Directory closed".to_string());
 }
 
@@ -166,6 +223,7 @@ fn bundled_css() -> String {
   --font-size: __FONT_PX__px;
 
   --menubar-h: 34px;
+  --tabbar-h: 30px;
 }
 
 * {
@@ -260,6 +318,83 @@ html, body {
   text-overflow: ellipsis;
 }
 
+/* ===== TABS ===== */
+.tabbar {
+  height: var(--tabbar-h);
+  display: flex;
+  align-items: stretch;
+  background: #0c0f16;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  user-select: none;
+}
+
+.tab {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tab:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+
+.tab.active {
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+}
+
+.tab-title {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tab-close:hover {
+  border-color: var(--border);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.tab-plus {
+  height: 100%;
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab-plus:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+
 /* ===== EDITOR LAYOUT ===== */
 .editor-wrap {
   flex: 1;
@@ -338,14 +473,37 @@ html, body {
 }
 
 /* ===== SIDEBAR ===== */
-.sidebar {
+.sidebar-resize {
   width: 280px;
+  min-width: 180px;
+  max-width: 620px;
   background: var(--panel);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   user-select: none;
   flex-shrink: 0;
+
+  /* We resize this via state + drag handle for consistent behavior in Dioxus Desktop */
+  overflow: hidden;
+}
+
+.sidebar-handle {
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.sidebar-handle:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.sidebar {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-collapsed {
@@ -493,37 +651,37 @@ html, body {
   border-color: rgba(88,135,255,0.35);
 }
 
+/* ===== SCROLLBARS ===== */
 .scroll {
-    scrollbar_gutter: stable;
+  scrollbar-gutter: stable;
 }
 
 .scroll::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
+  width: 12px;
+  height: 12px;
 }
 
 .scroll::-webkit-scrollbar-track {
-    background: #0b0d12;
+  background: #0b0d12;
 }
 
 .scroll::-webkit-scrollbar-thumb {
-    background-color: #2a3246;
-    border-radius: 8px;
-    border: 3px solid #0b0d12;
+  background-color: #2a3246;
+  border-radius: 8px;
+  border: 3px solid #0b0d12;
 }
 
 .scroll::-webkit-scrollbar-thumb:hover{
-    background-color: #3a4563;
+  background-color: #3a4563;
 }
 
 .scroll::-webkit-scrollbar-corner {
-    background: #0b0d12;
+  background: #0b0d12;
 }
 
 :root {
-    color-scheme: dark;
+  color-scheme: dark;
 }
-
 "#;
 
     template
@@ -534,273 +692,249 @@ html, body {
         .replace("__FONT_PX__", &format!("{FONT_PX}"))
 }
 
+/* ===== FILE OPS (TABS) ===== */
 
-/// Reset to a blank buffer (like "New File")
-fn do_new(mut st: Signal<EditorState>) {
-    let mut s = st();
-    s.lines = vec![String::new()];
-    s.cursor = Cursor { line: 0, col: 0 };
-    s.scroll_x = 0.0;
-    s.scroll_y = 0.0;
-    st.set(s);
+fn create_new_tab(mut tabs: Signal<Vec<Tab>>, mut active_tab: Signal<usize>, mut status: Signal<String>) {
+    let mut v = tabs();
+    let id = next_tab_id(&v);
+    v.push(Tab::new_untitled(id));
+    let new_idx = v.len().saturating_sub(1);
+    tabs.set(v);
+    active_tab.set(new_idx);
+    status.set("New tab".to_string());
 }
 
-async fn open_dialog_and_load(
-    mut st: Signal<EditorState>,
-    mut current_path: Signal<Option<PathBuf>>,
-    mut dirty: Signal<bool>,
+async fn open_dialog_add_tab(
+    mut tabs: Signal<Vec<Tab>>,
+    mut active_tab: Signal<usize>,
     mut status: Signal<String>,
-    mut current_language: Signal<String>,
 ) {
     if let Some(handle) = AsyncFileDialog::new().pick_file().await {
         let path = handle.path().to_path_buf();
+
+        // already open? just focus
+        if let Some(idx) = find_open_tab_index(&tabs(), &path) {
+            active_tab.set(idx);
+            status.set(format!("Focused {}", path.display()));
+            return;
+        }
+
+        status.set(format!("Opening {} ...", path.display()));
         match std::fs::read_to_string(&path) {
             Ok(contents) => {
-                let mut s = st();
-                s.lines = split_lines(&contents);
-                s.cursor = Cursor { line: 0, col: 0 };
-                st.set(s);
+                let lines = split_lines(&contents);
 
-                current_path.set(Some(path.clone()));
-                current_language.set(crate::syntax::detect_language_from_path(&path));
-                dirty.set(false);
-                status.set(format!("Opened {}", path.display()));
+            let mut v = tabs();
+            let id = next_tab_id(&v);
+            let language = maybe_disable_highlighting(&path, crate::syntax::detect_language_from_path(&path));
+            v.push(Tab {
+                id,
+                path: Some(path.clone()),
+                language,
+                dirty: false,
+                editor: EditorState {
+                    lines,
+                    cursor: Cursor { line: 0, col: 0 },
+                    scroll_x: 0.0,
+                    scroll_y: 0.0,
+                },
+            });
+            let new_idx = v.len().saturating_sub(1);
+            tabs.set(v);
+            active_tab.set(new_idx);
+            status.set(format!("Opened {}", path.display()));
+        }
             }
-            Err(err) => status.set(format!("Open failed: {}", err)),
+            Err(err) => status.set(format!("Open failed: {err}")),
         }
     }
 }
 
-async fn save_to_path(
-    st: Signal<EditorState>,
-    mut current_path: Signal<Option<PathBuf>>,
-    mut dirty: Signal<bool>,
+async fn open_path_in_tab(
+    mut tabs: Signal<Vec<Tab>>,
+    mut active_tab: Signal<usize>,
     mut status: Signal<String>,
-    mut current_language: Signal<String>,
     path: PathBuf,
 ) {
-    let text = join_lines(&st().lines);
-    match std::fs::write(&path, text) {
-        Ok(()) => {
-            current_path.set(Some(path.clone()));
-            current_language.set(crate::syntax::detect_language_from_path(&path));
-            dirty.set(false);
-            status.set(format!("Saved {}", path.display()));
+    if path.is_dir() {
+        status.set(format!("Directory click does nothing (yet): {}", path.display()));
+        return;
+    }
+
+    if let Some(idx) = find_open_tab_index(&tabs(), &path) {
+        active_tab.set(idx);
+        status.set(format!("Focused {}", path.display()));
+        return;
+    }
+
+    status.set(format!("Opening {} ...", path.display()));
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => {
+            let mut v = tabs();
+            let id = next_tab_id(&v);
+            let language = maybe_disable_highlighting(&path, crate::syntax::detect_language_from_path(&path));
+            v.push(Tab {
+                id,
+                path: Some(path.clone()),
+                language,
+                dirty: false,
+                editor: EditorState {
+                    lines: split_lines(&contents),
+                    cursor: Cursor { line: 0, col: 0 },
+                    scroll_x: 0.0,
+                    scroll_y: 0.0,
+                },
+            });
+            let new_idx = v.len().saturating_sub(1);
+            tabs.set(v);
+            active_tab.set(new_idx);
+            status.set(format!("Opened {}", path.display()));
         }
-        Err(err) => status.set(format!("Save failed: {}", err)),
+        Err(err) => status.set(format!("Open failed: {err}")),
     }
 }
 
-async fn save_or_save_as(
-    st: Signal<EditorState>,
-    current_path: Signal<Option<PathBuf>>,
-    dirty: Signal<bool>,
-    status: Signal<String>,
-    current_language: Signal<String>,
+async fn save_tab_to_path(
+    mut tabs: Signal<Vec<Tab>>,
+    tab_index: usize,
+    mut status: Signal<String>,
+    path: PathBuf,
 ) {
-    if let Some(p) = current_path() {
-        save_to_path(st, current_path, dirty, status, current_language, p).await;
+    let mut v = tabs();
+    if tab_index >= v.len() {
+        return;
+    }
+
+    let text = v[tab_index].editor.lines.as_ref().join("\n");
+    match std::fs::write(&path, text) {
+        Ok(()) => {
+            v[tab_index].path = Some(path.clone());
+            v[tab_index].language = crate::syntax::detect_language_from_path(&path);
+            v[tab_index].dirty = false;
+            tabs.set(v);
+            status.set(format!("Saved {}", path.display()));
+        }
+        Err(err) => status.set(format!("Save failed: {err}")),
+    }
+}
+
+async fn save_active_or_save_as(
+    tabs: Signal<Vec<Tab>>,
+    active_tab: Signal<usize>,
+    status: Signal<String>,
+) {
+    let idx = active_tab();
+    let v = tabs();
+    if idx >= v.len() {
+        return;
+    }
+
+    if let Some(p) = v[idx].path.clone() {
+        save_tab_to_path(tabs, idx, status, p).await;
         return;
     }
 
     if let Some(handle) = AsyncFileDialog::new().save_file().await {
         let path = handle.path().to_path_buf();
-        save_to_path(st, current_path, dirty, status, current_language, path).await;
+        save_tab_to_path(tabs, idx, status, path).await;
     }
 }
 
-async fn save_as(
-    st: Signal<EditorState>,
-    current_path: Signal<Option<PathBuf>>,
-    dirty: Signal<bool>,
-    status: Signal<String>,
-    current_language: Signal<String>,
-) {
+async fn save_as_active(tabs: Signal<Vec<Tab>>, active_tab: Signal<usize>, status: Signal<String>) {
+    let idx = active_tab();
+    let v = tabs();
+    if idx >= v.len() {
+        return;
+    }
+
     if let Some(handle) = AsyncFileDialog::new().save_file().await {
         let path = handle.path().to_path_buf();
-        save_to_path(st, current_path, dirty, status, current_language, path).await;
+        save_tab_to_path(tabs, idx, status, path).await;
     }
+}
+
+fn close_tab_immediately(mut tabs: Signal<Vec<Tab>>, mut active_tab: Signal<usize>, idx: usize) {
+    let mut v = tabs();
+    if v.is_empty() {
+        v.push(Tab::new_untitled(1));
+        tabs.set(v);
+        active_tab.set(0);
+        return;
+    }
+
+    if idx >= v.len() {
+        return;
+    }
+
+    v.remove(idx);
+
+    if v.is_empty() {
+        v.push(Tab::new_untitled(1));
+        tabs.set(v);
+        active_tab.set(0);
+        return;
+    }
+
+    // keep active in range
+    let mut a = active_tab();
+    if a >= v.len() {
+        a = v.len() - 1;
+    }
+
+    tabs.set(v);
+    active_tab.set(a);
 }
 
 pub fn app() -> Element {
     let css = bundled_css();
 
-    // NOTE: in this Dioxus version, Signal::set needs &mut self, so these bindings must be mutable.
-    let mut st = use_signal(EditorState::default);
+    // Tabs
+    let mut tabs = use_signal(|| vec![Tab::new_untitled(1)]);
+    let mut active_tab = use_signal(|| 0usize);
 
+    // UI
     let mut file_open = use_signal(|| false);
     let mut status = use_signal(|| "".to_string());
 
-    let mut current_path = use_signal(|| Option::<PathBuf>::None);
-    let mut dirty = use_signal(|| false);
-    let mut current_language = use_signal(|| "plain".to_string());
-
-    // New state for sidebar
+    // Sidebar (directory)
     let mut current_dir = use_signal(|| Option::<PathBuf>::None);
-    let mut dir_cache = use_signal(|| HashMap::<PathBuf, Vec<DirEntryItem>>::new());
-    let mut expanded_dirs = use_signal(|| HashSet::<PathBuf>::new());
+    let mut dir_contents = use_signal(|| Vec::<(String, PathBuf)>::new());
     let mut sidebar_collapsed = use_signal(|| false);
+    let mut sidebar_width = use_signal(|| 280.0f64);
+    let mut sidebar_resizing = use_signal(|| false);
+    let mut sidebar_resize_start_x = use_signal(|| 0.0f64);
+    let mut sidebar_resize_start_w = use_signal(|| 280.0f64);
 
+    // Confirm modal
     let mut confirm_open = use_signal(|| false);
     let mut pending_action = use_signal(|| PendingAction::None);
 
-    // for smooth scrolling
+    // for smooth scrolling (currently not used heavily, but kept)
     let mut scroll_top = use_signal(|| 0.0f64);
     let mut viewport_h = use_signal(|| 600.0f64);
 
-    let file_label = {
-        let name = current_path()
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Untitled".to_string());
+    // derived
+    let active_idx = active_tab();
+    let active_title = tabs()
+        .get(active_idx)
+        .map(|t| t.title())
+        .unwrap_or_else(|| "Untitled".to_string());
 
-        let star = if dirty() { "*" } else { "" };
-        format!("{name}{star}")
-    };
+    let active_language = tabs()
+        .get(active_idx)
+        .map(|t| t.language.clone())
+        .unwrap_or_else(|| "plain".to_string());
 
-    // Prepare sidebar items BEFORE the rsx! macro to avoid syntax errors
-    let sidebar_items = if current_dir().is_some() && !sidebar_collapsed() {
-        let root = current_dir().unwrap();
-        let cache_snapshot = dir_cache();
-        let expanded_snapshot = expanded_dirs();
+    let active_dirty = tabs()
+        .get(active_idx)
+        .map(|t| t.dirty)
+        .unwrap_or(false);
 
-        #[derive(Clone)]
-        struct Frame {
-            dir: PathBuf,
-            depth: usize,
-            idx: usize,
-            entries: Vec<DirEntryItem>,
-        }
-
-        let mut frames: Vec<Frame> = Vec::new();
-        let root_entries = cache_snapshot.get(&root).cloned().unwrap_or_default();
-        frames.push(Frame {
-            dir: root.clone(),
-            depth: 0,
-            idx: 0,
-            entries: root_entries,
-        });
-
-        let mut items = Vec::new();
-
-        while let Some(mut frame) = frames.pop() {
-            if frame.idx >= frame.entries.len() {
-                continue;
-            }
-
-            let depth = frame.depth;
-            let entry = frame.entries[frame.idx].clone();
-            frame.idx += 1;
-
-            // Put the frame back, so we continue iterating its siblings
-            frames.push(frame);
-
-            let path_for_click = entry.path.clone();
-            let path_for_tree = entry.path.clone();
-            let name_clone = entry.name.clone();
-            let is_dir = entry.is_dir;
-            let is_expanded = is_dir && expanded_snapshot.contains(&path_for_tree);
-            let disclosure = if is_dir {
-                if is_expanded { "▾" } else { "▸" }
-            } else {
-                " "
-            };
-            let icon = if is_dir { "📁" } else { "📄" };
-            let indent = 12 + (depth * 14);
-
-            let mut st_clone = st.clone();
-            let mut current_path_clone = current_path.clone();
-            let mut current_language_clone = current_language.clone();
-            let mut dirty_clone = dirty.clone();
-            let mut status_clone = status.clone();
-            let mut dir_cache_clone = dir_cache.clone();
-            let mut expanded_dirs_clone = expanded_dirs.clone();
-
-            let item = rsx! {
-                button {
-                    class: "sidebar-item",
-                    style: "padding-left: {indent}px;",
-                    onclick: move |_| {
-                        if is_dir {
-                            // Toggle expand/collapse
-                            let mut expanded = expanded_dirs_clone();
-                            let now_expanded = if expanded.contains(&path_for_click) {
-                                expanded.remove(&path_for_click);
-                                false
-                            } else {
-                                expanded.insert(path_for_click.clone());
-                                true
-                            };
-                            expanded_dirs_clone.set(expanded);
-
-                            // If expanding, lazily load children into cache
-                            if now_expanded {
-                                let mut cache = dir_cache_clone();
-                                if !cache.contains_key(&path_for_click) {
-                                    match list_directory_contents(&path_for_click) {
-                                        Ok(contents) => {
-                                            cache.insert(path_for_click.clone(), contents);
-                                            dir_cache_clone.set(cache);
-                                        }
-                                        Err(err) => {
-                                            status_clone.set(format!(
-                                                "Failed to list directory {}: {}",
-                                                name_clone, err
-                                            ));
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Open file
-                            if dirty_clone() {
-                                status_clone.set("Unsaved changes: save or discard before opening another file".to_string());
-                                return;
-                            }
-
-                            match std::fs::read_to_string(&path_for_click) {
-                                Ok(contents) => {
-                                    let mut s = st_clone();
-                                    s.lines = split_lines(&contents);
-                                    s.cursor = Cursor { line: 0, col: 0 };
-                                    st_clone.set(s);
-
-                                    current_path_clone.set(Some(path_for_click.clone()));
-                                    current_language_clone.set(crate::syntax::detect_language_from_path(&path_for_click));
-                                    dirty_clone.set(false);
-                                    status_clone.set(format!("Opened {}", name_clone));
-                                }
-                                Err(err) => status_clone.set(format!("Open failed: {}", err)),
-                            }
-                        }
-                    },
-
-                    "{disclosure} {icon} {name_clone}"
-                }
-            };
-
-            items.push(item);
-
-            // Depth-first: if expanded dir, push its children
-            if is_dir && is_expanded {
-                let children = cache_snapshot.get(&path_for_tree).cloned().unwrap_or_default();
-                frames.push(Frame {
-                    dir: path_for_tree.clone(),
-                    depth: depth + 1,
-                    idx: 0,
-                    entries: children,
-                });
-            }
-        }
-
-        Some(items)
-    } else {
-        None
-    };
+    let active_path = tabs()
+        .get(active_idx)
+        .and_then(|t| t.path.clone());
 
     rsx! {
-
         style { "{css}" }
 
         div {
@@ -830,67 +964,38 @@ pub fn app() -> Element {
                             class: "dropdown",
                             onclick: move |e| e.stop_propagation(),
 
-                            // New
+                            // New tab
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-
-                                    if dirty() {
-                                        pending_action.set(PendingAction::NewFile);
-                                        confirm_open.set(true);
-                                        return;
-                                    }
-
-                                    do_new(st.clone());
-                                    current_path.set(None);
-                                    dirty.set(false);
-                                    current_language.set("plain".to_string());
-                                    status.set("New file".to_string());
+                                    create_new_tab(tabs.clone(), active_tab.clone(), status.clone());
                                 },
-                                "New - Ctrl+N"
+                                "New Tab - Ctrl+N"
                             }
 
-                            // Open…
+                            // Open file...
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-
-                                    if dirty() {
-                                        pending_action.set(PendingAction::OpenFile);
-                                        confirm_open.set(true);
-                                        return;
-                                    }
-
-                                    let st2 = st.clone();
-                                    let cp2 = current_path.clone();
-                                    let dirty2 = dirty.clone();
-                                    let status2 = status.clone();
-                                    let lang2 = current_language.clone();
-                                    spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await; });
+                                    let tabs2 = tabs.clone();
+                                    let act2 = active_tab.clone();
+                                    let mut status2 = status.clone();
+                                    spawn(async move { open_dialog_add_tab(tabs2, act2, status2).await; });
                                 },
                                 "Open - Ctrl+O"
                             }
 
-                            // Open Directory
+                            // Open directory
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-                                    
-                                    if dirty() {
-                                        status.set("Save changes before opening directory".to_string());
-                                        return;
-                                    }
-                                    
                                     let current_dir2 = current_dir.clone();
-                                    let dir_cache2 = dir_cache.clone();
-                                    let expanded_dirs2 = expanded_dirs.clone();
-                                    let status2 = status.clone();
-                                    spawn(async move { 
-                                        open_directory(current_dir2, dir_cache2, expanded_dirs2, status2).await; 
-                                    });
+                                    let dir_contents2 = dir_contents.clone();
+                                    let mut status2 = status.clone();
+                                    spawn(async move { open_directory(current_dir2, dir_contents2, status2).await; });
                                 },
                                 "Open Directory - Ctrl+Shift+O"
                             }
@@ -900,41 +1005,35 @@ pub fn app() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-
-                                    let st2 = st.clone();
-                                    let cp2 = current_path.clone();
-                                    let dirty2 = dirty.clone();
-                                    let status2 = status.clone();
-                                    let lang2 = current_language.clone();
-                                    spawn(async move { save_or_save_as(st2, cp2, dirty2, status2, lang2).await; });
+                                    let tabs2 = tabs.clone();
+                                    let act2 = active_tab.clone();
+                                    let mut status2 = status.clone();
+                                    spawn(async move { save_active_or_save_as(tabs2, act2, status2).await; });
                                 },
                                 "Save - Ctrl+S"
                             }
 
-                            // Save As…
+                            // Save As
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-
-                                    let st2 = st.clone();
-                                    let cp2 = current_path.clone();
-                                    let dirty2 = dirty.clone();
-                                    let status2 = status.clone();
-                                    let lang2 = current_language.clone();
-                                    spawn(async move { save_as(st2, cp2, dirty2, status2, lang2).await; });
+                                    let tabs2 = tabs.clone();
+                                    let act2 = active_tab.clone();
+                                    let mut status2 = status.clone();
+                                    spawn(async move { save_as_active(tabs2, act2, status2).await; });
                                 },
                                 "Save As - Ctrl+Shift+S"
                             }
 
                             div { class: "menu-sep" }
 
-                            // Close Directory
+                            // Close directory
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-                                    close_directory(current_dir.clone(), dir_cache.clone(), expanded_dirs.clone(), status.clone());
+                                    close_directory(current_dir.clone(), dir_contents.clone(), status.clone());
                                 },
                                 "Close Directory - Ctrl+Shift+C"
                             }
@@ -947,13 +1046,13 @@ pub fn app() -> Element {
                                 onclick: move |_| {
                                     file_open.set(false);
 
-                                    if dirty() {
+                                    // If the active tab is dirty, confirm. (Yes, this is basic. No, it won't babysit every dirty tab.)
+                                    if active_dirty {
                                         pending_action.set(PendingAction::ExitApp);
                                         confirm_open.set(true);
                                         return;
                                     }
 
-                                    // graceful close (desktop)
                                     dioxus_desktop::window().close();
                                 },
                                 "Exit - Ctrl+Q"
@@ -962,55 +1061,148 @@ pub fn app() -> Element {
                     }
                 }
 
-                div { class: "file-indicator", "{file_label}" }
+                div { class: "file-indicator", "{active_title}" }
                 div { class: "file-indicator", "{status()}" }
             }
 
+            // ===== Tabs =====
+            div { class: "tabbar",
+                // plus
+                div {
+                    class: "tab-plus",
+                    onclick: move |_| create_new_tab(tabs.clone(), active_tab.clone(), status.clone()),
+                    "+"
+                }
+
+                for (idx, tab) in tabs().iter().enumerate() {
+                    div {
+                        class: if idx == active_tab() { "tab active" } else { "tab" },
+                        onclick: {
+                            let idx = idx;
+                            move |_| active_tab.set(idx)
+                        },
+
+                        span { class: "tab-title", "{tab.title()}" }
+
+                        button {
+                            class: "tab-close",
+                            onclick: {
+                                let idx = idx;
+                                let tabs2 = tabs.clone();
+                                let act2 = active_tab.clone();
+                                let mut confirm2 = confirm_open.clone();
+                                let mut pending2 = pending_action.clone();
+                                move |e| {
+                                    e.stop_propagation();
+                                    let v = tabs2();
+                                    if idx >= v.len() {
+                                        return;
+                                    }
+                                    if v[idx].dirty {
+                                        pending2.set(PendingAction::CloseTab(idx));
+                                        confirm2.set(true);
+                                    } else {
+                                        close_tab_immediately(tabs2.clone(), act2.clone(), idx);
+                                    }
+                                }
+                            },
+                            "×"
+                        }
+                    }
+                }
+            }
+
             // ===== Editor =====
-            div { class: "editor-wrap",
+            div {
+                class: "editor-wrap",
+
+                // Sidebar resize drag handling
+                onmousemove: move |e| {
+                    if !sidebar_resizing() {
+                        return;
+                    }
+
+                    let x = e.data().coordinates().client().x;
+                    let dx = x - sidebar_resize_start_x();
+                    let new_w = (sidebar_resize_start_w() + dx).clamp(180.0, 620.0);
+                    sidebar_width.set(new_w);
+                    e.prevent_default();
+                },
+                onmouseup: move |_| sidebar_resizing.set(false),
+                onmouseleave: move |_| sidebar_resizing.set(false),
                 div {
                     class: "row",
-                    
-                    // Sidebar - using pre-computed items
-                    if !sidebar_collapsed() && current_dir().is_some() {
+
+                    // Sidebar (left)
+                    if !sidebar_collapsed() {
                         div {
-                            class: "sidebar",
-                            
-                            // Sidebar header
-                            div {
-                                class: "sidebar-header",
-                                onclick: move |_| sidebar_collapsed.set(true),
-                                
-                                if let Some(dir) = current_dir() {
-                                    span {
+                            class: "sidebar-resize",
+                            style: "width: {sidebar_width()}px;",
+                            div { class: "sidebar",
+                                div {
+                                    class: "sidebar-header",
+                                    onclick: move |_| sidebar_collapsed.set(true),
+
+                                    div {
                                         class: "sidebar-title",
-                                        title: "{dir.display()}",
-                                        "{dir.file_name().unwrap_or_default().to_string_lossy()}"
+                                        {
+                                            if let Some(p) = current_dir() {
+                                                rsx!("{p.display()}")
+                                            } else {
+                                                rsx!("No directory")
+                                            }
+                                        }
                                     }
-                                } else {
-                                    span { class: "sidebar-title", "No directory open" }
+
+                                    button { class: "sidebar-collapse-btn", "×" }
                                 }
-                                
-                                button {
-                                    class: "sidebar-collapse-btn",
-                                    "×"
-                                }
-                            }
-                            
-                            // Directory contents
-                            div {
-                                class: "sidebar-contents",
-                                {
-                                    if let Some(items) = sidebar_items.as_ref() {
-                                        rsx!({items.iter()})
+
+                                div { class: "sidebar-contents",
+                                    if current_dir().is_some() {
+                                        for (name, path) in dir_contents().iter() {
+                                            button {
+                                                class: "sidebar-item",
+                                                onclick: {
+                                                    let tabs2 = tabs.clone();
+                                                    let act2 = active_tab.clone();
+                                                    let mut status2 = status.clone();
+                                                    let p = path.clone();
+                                                    let n = name.clone();
+                                                    move |_| {
+                                                        if p.is_dir() {
+                                                            status2.set(format!("Directory: {n}"));
+                                                        } else {
+                                                            let tabs3 = tabs2.clone();
+                                                            let act3 = act2.clone();
+                                                            let status3 = status2.clone();
+                                                            let p2 = p.clone();
+                                                            spawn(async move { open_path_in_tab(tabs3, act3, status3, p2).await; });
+                                                        }
+                                                    }
+                                                },
+                                                if path.is_dir() { "[DIR] " } else { "[FILE] " }
+                                                "{name}"
+                                            }
+                                        }
                                     } else {
-                                        rsx!(div { class: "sidebar-empty", "No directory open" })
+                                        div { class: "sidebar-empty", "No directory open" }
                                     }
                                 }
                             }
                         }
+
+                        // Drag handle to resize the sidebar
+                        div {
+                            class: "sidebar-handle",
+                            onmousedown: move |e| {
+                                e.stop_propagation();
+                                sidebar_resizing.set(true);
+                                sidebar_resize_start_x.set(e.data().coordinates().client().x);
+                                sidebar_resize_start_w.set(sidebar_width());
+                                e.prevent_default();
+                            },
+                        }
                     } else if sidebar_collapsed() && current_dir().is_some() {
-                        // Collapsed sidebar - just show a button to expand
                         div {
                             class: "sidebar-collapsed",
                             onclick: move |_| sidebar_collapsed.set(false),
@@ -1022,7 +1214,7 @@ pub fn app() -> Element {
                     div {
                         class: "scroll",
                         tabindex: "0",
-                        id:"scrollpane",
+                        id: "scrollpane",
 
                         onscroll: move |e| {
                             let d = e.data();
@@ -1031,109 +1223,95 @@ pub fn app() -> Element {
                         },
 
                         onkeydown: move |e| {
-                            // ===== Keyboard shortcuts =====
                             let kd = e.data();
                             let m = kd.modifiers();
-                            let ctrl = m.ctrl() || m.meta(); // Ctrl (Win/Linux) or Cmd (macOS)
+                            let ctrl = m.ctrl() || m.meta();
                             let shift = m.shift();
                             let key = kd.key();
 
                             if ctrl {
                                 if let Key::Character(c) = key {
                                     match (shift, c.to_lowercase().as_str()) {
-                                        // Ctrl/Cmd + N : New File
+                                        // Ctrl/Cmd + N : New tab
                                         (false, "n") => {
-                                            if dirty() {
-                                                pending_action.set(PendingAction::NewFile);
-                                                confirm_open.set(true);
-                                            } else {
-                                                do_new(st.clone());
-                                                current_path.set(None);
-                                                dirty.set(false);
-                                                current_language.set("plain".to_string());
-                                                status.set("New file".to_string());
-                                            }
+                                            create_new_tab(tabs.clone(), active_tab.clone(), status.clone());
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
-                                        // Ctrl/Cmd + O : Open
+                                        }
+                                        // Ctrl/Cmd + O : Open file
                                         (false, "o") => {
-                                            if dirty() {
-                                                pending_action.set(PendingAction::OpenFile);
-                                                confirm_open.set(true);
-                                            } else {
-                                                let st2 = st.clone();
-                                                let cp2 = current_path.clone();
-                                                let dirty2 = dirty.clone();
-                                                let status2 = status.clone();
-                                                let lang2 = current_language.clone();
-                                                spawn(async move {
-                                                    open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await;
-                                                });
-                                            }
+                                            let tabs2 = tabs.clone();
+                                            let act2 = active_tab.clone();
+                                            let mut status2 = status.clone();
+                                            spawn(async move { open_dialog_add_tab(tabs2, act2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
-                                        // Ctrl/Cmd + Shift + O : Open Directory
+                                        }
+                                        // Ctrl/Cmd + Shift + O : Open directory
                                         (true, "o") => {
                                             let current_dir2 = current_dir.clone();
-                                            let dir_cache2 = dir_cache.clone();
-                                    let expanded_dirs2 = expanded_dirs.clone();
-                                            let status2 = status.clone();
-                                            spawn(async move {
-                                                open_directory(current_dir2, dir_cache2, expanded_dirs2, status2).await;
-                                            });
+                                            let dir_contents2 = dir_contents.clone();
+                                            let mut status2 = status.clone();
+                                            spawn(async move { open_directory(current_dir2, dir_contents2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
-                                        // Ctrl/Cmd + Shift + C : Close Directory
+                                        }
+                                        // Ctrl/Cmd + Shift + C : Close directory
                                         (true, "c") => {
-                                            close_directory(current_dir.clone(), dir_cache.clone(), expanded_dirs.clone(), status.clone());
+                                            close_directory(current_dir.clone(), dir_contents.clone(), status.clone());
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
+                                        }
                                         // Ctrl/Cmd + S : Save
                                         (false, "s") => {
-                                            let st2 = st.clone();
-                                            let cp2 = current_path.clone();
-                                            let dirty2 = dirty.clone();
-                                            let status2 = status.clone();
-                                            let lang2 = current_language.clone();
-                                            spawn(async move {
-                                                save_or_save_as(st2, cp2, dirty2, status2, lang2).await;
-                                            });
+                                            let tabs2 = tabs.clone();
+                                            let act2 = active_tab.clone();
+                                            let mut status2 = status.clone();
+                                            spawn(async move { save_active_or_save_as(tabs2, act2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
+                                        }
                                         // Ctrl/Cmd + Shift + S : Save As
                                         (true, "s") => {
-                                            let st2 = st.clone();
-                                            let cp2 = current_path.clone();
-                                            let dirty2 = dirty.clone();
-                                            let status2 = status.clone();
-                                            let lang2 = current_language.clone();
-                                            spawn(async move {
-                                                save_as(st2, cp2, dirty2, status2, lang2).await;
-                                            });
+                                            let tabs2 = tabs.clone();
+                                            let act2 = active_tab.clone();
+                                            let mut status2 = status.clone();
+                                            spawn(async move { save_as_active(tabs2, act2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
-                                        // Ctrl/Cmd + B : Toggle Sidebar
+                                        }
+                                        // Ctrl/Cmd + B : Toggle sidebar
                                         (false, "b") => {
                                             sidebar_collapsed.set(!sidebar_collapsed());
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
+                                        }
+                                        // Ctrl/Cmd + W : Close tab
+                                        (false, "w") => {
+                                            let idx = active_tab();
+                                            let v = tabs();
+                                            if idx < v.len() {
+                                                if v[idx].dirty {
+                                                    pending_action.set(PendingAction::CloseTab(idx));
+                                                    confirm_open.set(true);
+                                                } else {
+                                                    close_tab_immediately(tabs.clone(), active_tab.clone(), idx);
+                                                }
+                                            }
+                                            e.prevent_default();
+                                            e.stop_propagation();
+                                            return;
+                                        }
                                         // Ctrl/Cmd + Q : Quit
                                         (false, "q") => {
-                                            if dirty() {
+                                            if active_dirty {
                                                 pending_action.set(PendingAction::ExitApp);
                                                 confirm_open.set(true);
                                             } else {
@@ -1142,20 +1320,26 @@ pub fn app() -> Element {
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
-                                        },
+                                        }
                                         _ => {}
                                     }
                                 }
                             }
 
                             // ===== Editor typing =====
+                            let key = e.data().key();
+                            let idx = active_tab();
 
-                            let mut s = st();
-                            let changed = handle_key(&mut s, e.data().key());
-                            st.set(s);
+                            set_active_tab_editor(tabs.clone(), active_tab.clone(), |t| {
+                                let changed = handle_key(&mut t.editor, key);
+                                if changed {
+                                    t.dirty = true;
+                                }
+                            });
 
-                            if changed {
-                                dirty.set(true);
+                            // status line hint
+                            if idx < tabs().len() {
+                                // nothing
                             }
 
                             e.prevent_default();
@@ -1164,58 +1348,80 @@ pub fn app() -> Element {
 
                         div { class: "editor-content",
                             // gutter
-                            div { class: "gutter",
-                                for (i, _) in st().lines.iter().enumerate() {
-                                    div {
-                                        class: if i == st().cursor.line { "ln active" } else { "ln" },
-                                        "{i + 1}"
+                            {
+                                let v = tabs();
+                                let idx = active_tab();
+
+                                let (lines, cursor_line) = if idx < v.len() {
+                                    (v[idx].editor.lines.clone(), v[idx].editor.cursor.line)
+                                } else {
+                                    (Arc::new(vec![String::new()]), 0usize)
+                                };
+
+                                let total = lines.len();
+                                let (start, end, top_h, bottom_h) =
+                                    visible_range(scroll_top(), viewport_h(), total);
+
+                                rsx!(
+                                    div { class: "gutter",
+                                        div { style: "height: {top_h}px;" }
+                                        for i in start..end {
+                                            div {
+                                                class: if i == cursor_line { "ln active" } else { "ln" },
+                                                "{i + 1}"
+                                            }
+                                        }
+                                        div { style: "height: {bottom_h}px;" }
                                     }
-                                }
+                                )
                             }
 
-                            // text pane
+// text pane
                             div {
                                 class: "textpane",
 
                                 onclick: move |e| {
-                                    let mut s = st();
                                     let p = e.data().coordinates().element();
-
                                     let content_x = (p.x - PAD_X_PX) + CLICK_COL_BIAS_PX;
-                                    let content_y =  p.y - PAD_Y_PX;
+                                    let content_y = (p.y - PAD_Y_PX) + scroll_top();
 
-                                    if s.lines.is_empty() {
-                                        s.lines.push(String::new());
-                                    }
+                                    set_active_tab_editor(tabs.clone(), active_tab.clone(), |t| {
+                                        let s = &mut t.editor;
+                                        if s.lines.is_empty() {
+                                            lines_mut(s).push(String::new());
+                                        }
 
-                                    let mut line = if content_y <= 0.0 {
-                                        0
-                                    } else {
-                                        (content_y / line_px()).floor() as usize
-                                    };
+                                        let mut line = if content_y <= 0.0 {
+                                            0
+                                        } else {
+                                            (content_y / line_px()).floor() as usize
+                                        };
 
-                                    if line >= s.lines.len() {
-                                        line = s.lines.len() - 1;
-                                    }
+                                        if line >= s.lines.len() {
+                                            line = s.lines.len() - 1;
+                                        }
 
-                                    let mut col = if content_x <= 0.0 {
-                                        0
-                                    } else {
-                                        (content_x / char_px()).floor() as usize
-                                    };
+                                        let mut col = if content_x <= 0.0 {
+                                            0
+                                        } else {
+                                            (content_x / char_px()).floor() as usize
+                                        };
 
-                                    let max_col = s.lines[line].len();
-                                    if col > max_col {
-                                        col = max_col;
-                                    }
+                                        let max_col = s.lines[line].len();
+                                        if col > max_col {
+                                            col = max_col;
+                                        }
 
-                                    s.cursor = Cursor { line, col };
-                                    st.set(s);
+                                        s.cursor = Cursor { line, col };
+                                    });
                                 },
 
                                 // caret
                                 {
-                                    let s = st();
+                                    let v = tabs();
+                                    let idx = active_tab();
+                                    let s = if idx < v.len() { v[idx].editor.clone() } else { EditorState::default() };
+
                                     let top = (s.cursor.line as f64) * line_px();
                                     let left = (s.cursor.col as f64) * char_px();
 
@@ -1228,26 +1434,39 @@ pub fn app() -> Element {
                                 }
 
                                 // lines (with syntax highlighting)
-                                for (i, line) in st().lines.iter().enumerate() {
-                                    {
-                                        let spans = crate::syntax::highlight_line(&current_language(), line);
-                                        rsx!(
-                                            div {
-                                                class: if i == st().cursor.line { "line active" } else { "line" },
-                                                for sp in spans {
-                                                    span {
-                                                        style: "color: {sp.color};",
-                                                        "{sp.text}"
+                                {
+                                    let v = tabs();
+                                    let idx = active_tab();
+                                    let s = if idx < v.len() { v[idx].editor.clone() } else { EditorState::default() };
+
+                                    let total = s.lines.len();
+                                    let (start, end, top_h, bottom_h) =
+                                        visible_range(scroll_top(), viewport_h(), total);
+
+                                    rsx!(
+                                        div { style: "height: {top_h}px;" }
+                                        for i in start..end {
+                                            {
+                                                let line = &s.lines[i];
+                                                let spans = crate::syntax::highlight_line(&active_language, line);
+                                                rsx!(
+                                                    div {
+                                                        class: if i == s.cursor.line { "line active" } else { "line" },
+                                                        for sp in spans {
+                                                            span { style: "color: {sp.color};", "{sp.text}" }
+                                                        }
                                                     }
-                                                }
+                                                )
                                             }
-                                        )
-                                    }
+                                        }
+                                        div { style: "height: {bottom_h}px;" }
+                                    )
                                 }
+
+
                             }
                         }
                     }
-
                 }
             }
 
@@ -1265,7 +1484,17 @@ pub fn app() -> Element {
                         onclick: move |e| e.stop_propagation(),
 
                         div { class: "modal-title", "You have unsaved changes." }
-                        div { class: "modal-sub", "Save before continuing?" }
+                        div {
+                            class: "modal-sub",
+                            {
+                                let what = match pending_action() {
+                                    PendingAction::CloseTab(_) => "Close the tab?",
+                                    PendingAction::ExitApp => "Exit the app?",
+                                    PendingAction::None => "Continue?",
+                                };
+                                rsx!("Save before continuing? ({what})")
+                            }
+                        }
 
                         div { class: "modal-actions",
                             // Cancel
@@ -1282,31 +1511,20 @@ pub fn app() -> Element {
                             button {
                                 class: "btn btn-danger",
                                 onclick: move |_| {
+                                    let action = pending_action();
                                     confirm_open.set(false);
-                                    dirty.set(false);
+                                    pending_action.set(PendingAction::None);
 
-                                    match pending_action() {
-                                        PendingAction::NewFile => {
-                                            do_new(st.clone());
-                                            current_path.set(None);
-                                            dirty.set(false);
-                                            status.set("New file".to_string());
-                                        }
-                                        PendingAction::OpenFile => {
-                                            let st2 = st.clone();
-                                            let cp2 = current_path.clone();
-                                            let dirty2 = dirty.clone();
-                                            let status2 = status.clone();
-                                            let lang2 = current_language.clone();
-                                            spawn(async move { open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await; });
+                                    match action {
+                                        PendingAction::CloseTab(i) => {
+                                            // discard changes and close
+                                            close_tab_immediately(tabs.clone(), active_tab.clone(), i);
                                         }
                                         PendingAction::ExitApp => {
                                             dioxus_desktop::window().close();
                                         }
                                         PendingAction::None => {}
                                     }
-
-                                    pending_action.set(PendingAction::None);
                                 },
                                 "Discard"
                             }
@@ -1315,34 +1533,53 @@ pub fn app() -> Element {
                             button {
                                 class: "btn btn-primary",
                                 onclick: move |_| {
+                                    let action = pending_action();
                                     confirm_open.set(false);
 
-                                    let st2 = st.clone();
-                                    let mut cp2 = current_path.clone();
-                                    let mut dirty2 = dirty.clone();
+                                    let tabs2 = tabs.clone();
+                                    let act2 = active_tab.clone();
                                     let mut status2 = status.clone();
-                                    let lang2 = current_language.clone();
                                     let mut pending2 = pending_action.clone();
 
                                     spawn(async move {
-                                        save_or_save_as(st2.clone(), cp2.clone(), dirty2.clone(), status2.clone(), lang2.clone()).await;
+                                        match action.clone() {
+                                            PendingAction::CloseTab(i) => {
+                                                // Save that tab index (not necessarily active)
+                                                // If user cancels save dialog, nothing happens.
+                                                let v = tabs2();
+                                                if i < v.len() {
+                                                    if let Some(p) = v[i].path.clone() {
+                                                        save_tab_to_path(tabs2.clone(), i, status2.clone(), p).await;
+                                                    } else if let Some(handle) = AsyncFileDialog::new().save_file().await {
+                                                        let path = handle.path().to_path_buf();
+                                                        save_tab_to_path(tabs2.clone(), i, status2.clone(), path).await;
+                                                    }
 
-                                        if !dirty2() {
-                                            match pending2() {
-                                                PendingAction::NewFile => {
-                                                    do_new(st2.clone());
-                                                    cp2.set(None);
-                                                    dirty2.set(false);
-                                                    status2.set("New file".to_string());
+                                                    // If it saved (dirty cleared), close it.
+                                                    let v2 = tabs2();
+                                                    if i < v2.len() && !v2[i].dirty {
+                                                        close_tab_immediately(tabs2.clone(), act2.clone(), i);
+                                                    }
                                                 }
-                                                PendingAction::OpenFile => {
-                                                    open_dialog_and_load(st2, cp2, dirty2, status2, lang2).await;
-                                                }
-                                                PendingAction::ExitApp => {
-                                                    dioxus_desktop::window().close();
-                                                }
-                                                PendingAction::None => {}
                                             }
+                                            PendingAction::ExitApp => {
+                                                // Save active tab, then exit if clean
+                                                let idx = act2();
+                                                let v = tabs2();
+                                                if idx < v.len() {
+                                                    if let Some(p) = v[idx].path.clone() {
+                                                        save_tab_to_path(tabs2.clone(), idx, status2.clone(), p).await;
+                                                    } else if let Some(handle) = AsyncFileDialog::new().save_file().await {
+                                                        let path = handle.path().to_path_buf();
+                                                        save_tab_to_path(tabs2.clone(), idx, status2.clone(), path).await;
+                                                    }
+
+                                                    if act2() < tabs2().len() && !tabs2()[act2()].dirty {
+                                                        dioxus_desktop::window().close();
+                                                    }
+                                                }
+                                            }
+                                            PendingAction::None => {}
                                         }
 
                                         pending2.set(PendingAction::None);
@@ -1359,6 +1596,10 @@ pub fn app() -> Element {
 }
 
 /* ===== EDITING ===== */
+
+fn lines_mut(s: &mut EditorState) -> &mut Vec<String> {
+    Arc::make_mut(&mut s.lines)
+}
 
 fn handle_key(s: &mut EditorState, key: Key) -> bool {
     match key {
@@ -1400,7 +1641,11 @@ fn handle_key(s: &mut EditorState, key: Key) -> bool {
 
 fn insert_char(s: &mut EditorState, ch: char) {
     let Cursor { line, col } = s.cursor;
-    s.lines[line].insert(col, ch);
+    let lines = lines_mut(s);
+    if line >= lines.len() {
+        lines.push(String::new());
+    }
+    lines[line].insert(col, ch);
     s.cursor.col += ch.len_utf8();
 }
 
@@ -1412,22 +1657,42 @@ fn insert_str(s: &mut EditorState, t: &str) {
 
 fn backspace(s: &mut EditorState) {
     let Cursor { line, col } = s.cursor;
+    let lines = lines_mut(s);
+
+    if lines.is_empty() {
+        lines.push(String::new());
+        s.cursor = Cursor { line: 0, col: 0 };
+        return;
+    }
+
+    let line = line.min(lines.len().saturating_sub(1));
+
     if col > 0 {
-        s.lines[line].remove(col - 1);
-        s.cursor.col -= 1;
+        if col <= lines[line].len() {
+            lines[line].remove(col - 1);
+            s.cursor.col = col - 1;
+        }
     } else if line > 0 {
-        let tail = s.lines.remove(line);
+        let tail = lines.remove(line);
         let prev = line - 1;
-        let len = s.lines[prev].len();
-        s.lines[prev].push_str(&tail);
+        let len = lines[prev].len();
+        lines[prev].push_str(&tail);
         s.cursor = Cursor { line: prev, col: len };
     }
 }
 
 fn newline(s: &mut EditorState) {
     let Cursor { line, col } = s.cursor;
-    let rest = s.lines[line].split_off(col);
-    s.lines.insert(line + 1, rest);
+    let lines = lines_mut(s);
+
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    let line = line.min(lines.len().saturating_sub(1));
+    let safe_col = col.min(lines[line].len());
+    let rest = lines[line].split_off(safe_col);
+    lines.insert(line + 1, rest);
     s.cursor = Cursor { line: line + 1, col: 0 };
 }
 
@@ -1464,22 +1729,20 @@ fn move_down(s: &mut EditorState) {
 }
 
 fn main() {
-    use dioxus::desktop::{Config, WindowBuilder, LogicalSize, LogicalPosition};
+    use dioxus::desktop::{Config, LogicalPosition, LogicalSize, WindowBuilder};
     use dioxus::LaunchBuilder;
 
     let cfg = Config::new()
-        .with_menu(None) // removes the native "Window / Edit / Help" menu bar
+        .with_menu(None)
         .with_window(
             WindowBuilder::new()
                 .with_title("SIDE")
-                .with_decorations(true)      // keep titlebar + min/max/close
-                .with_always_on_top(false)  // optional
-                .with_inner_size(LogicalSize::new(800, 600)) // set default window size
+                .with_decorations(true)
+                .with_always_on_top(false)
+                .with_inner_size(LogicalSize::new(800, 600))
                 .with_maximized(true)
                 .with_position(LogicalPosition::new(500, 200)),
         );
 
-    LaunchBuilder::desktop()
-        .with_cfg(cfg)
-        .launch(app);
+    LaunchBuilder::desktop().with_cfg(cfg).launch(app);
 }

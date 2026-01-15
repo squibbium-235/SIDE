@@ -1,7 +1,11 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dioxus::prelude::*;
 use rfd::AsyncFileDialog;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 mod syntax;
 
@@ -151,50 +155,226 @@ fn maybe_disable_highlighting(path: &PathBuf, language: String) -> String {
     language
 }
 
-/* ===== DIRECTORY FUNCTIONS ===== */
+/* ===== DIRECTORY TREE (SIDEBAR) ===== */
+
+#[derive(Clone, Debug)]
+struct DirEntryItem {
+    name: String,
+    path: PathBuf,
+    is_dir: bool,
+}
+
+fn list_dir_entries(dir: &Path) -> std::io::Result<Vec<DirEntryItem>> {
+    let mut dirs: Vec<DirEntryItem> = Vec::new();
+    let mut files: Vec<DirEntryItem> = Vec::new();
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_dir = path.is_dir();
+
+        let item = DirEntryItem { name, path, is_dir };
+        if is_dir {
+            dirs.push(item);
+        } else {
+            files.push(item);
+        }
+    }
+
+    // Folders first, then files. Humans love hierarchy.
+    dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    dirs.extend(files);
+    Ok(dirs)
+}
+
+fn set_workspace_dir(
+    mut current_dir: Signal<Option<PathBuf>>,
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    mut status: Signal<String>,
+    path: PathBuf,
+) {
+    match list_dir_entries(&path) {
+        Ok(entries) => {
+            let mut cache = HashMap::new();
+            cache.insert(path.clone(), entries);
+
+            current_dir.set(Some(path.clone()));
+            expanded_dirs.set(HashSet::new());
+            dir_cache.set(cache);
+
+            status.set(format!("Opened directory: {}", path.display()));
+        }
+        Err(err) => status.set(format!("Failed to list directory: {err}")),
+    }
+}
 
 async fn open_directory(
     mut current_dir: Signal<Option<PathBuf>>,
-    mut dir_contents: Signal<Vec<(String, PathBuf)>>,
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
     mut status: Signal<String>,
 ) {
     if let Some(handle) = AsyncFileDialog::new().pick_folder().await {
         let path = handle.path().to_path_buf();
-        match list_directory_contents(&path) {
-            Ok(contents) => {
-                current_dir.set(Some(path.clone()));
-                dir_contents.set(contents);
-                status.set(format!("Opened directory: {}", path.display()));
-            }
-            Err(err) => status.set(format!("Failed to list directory: {err}")),
-        }
+        set_workspace_dir(current_dir, expanded_dirs, dir_cache, status, path);
     }
-}
-
-fn list_directory_contents(path: &PathBuf) -> std::io::Result<Vec<(String, PathBuf)>> {
-    let mut contents = Vec::new();
-
-    for entry in std::fs::read_dir(path)? {
-        let entry = entry?;
-        let p = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-        contents.push((name, p));
-    }
-
-    // Sort by name
-    contents.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(contents)
 }
 
 fn close_directory(
     mut current_dir: Signal<Option<PathBuf>>,
-    mut dir_contents: Signal<Vec<(String, PathBuf)>>,
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
     mut status: Signal<String>,
 ) {
     current_dir.set(None);
-    dir_contents.set(Vec::new());
+    expanded_dirs.set(HashSet::new());
+    dir_cache.set(HashMap::new());
     status.set("Directory closed".to_string());
 }
+
+fn toggle_directory(
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    mut status: Signal<String>,
+    dir: PathBuf,
+) {
+    let mut expanded = expanded_dirs();
+
+    if expanded.contains(&dir) {
+        expanded.remove(&dir);
+        expanded_dirs.set(expanded);
+        return;
+    }
+
+    expanded.insert(dir.clone());
+    expanded_dirs.set(expanded);
+
+    // Lazy-load children on first expand so we don't do a full filesystem crawl every render.
+    let mut cache = dir_cache();
+    if !cache.contains_key(&dir) {
+        match list_dir_entries(&dir) {
+            Ok(entries) => {
+                cache.insert(dir.clone(), entries);
+                dir_cache.set(cache);
+            }
+            Err(err) => {
+                status.set(format!("Failed to list directory: {err}"));
+            }
+        }
+    }
+}
+
+fn enter_directory(
+    mut current_dir: Signal<Option<PathBuf>>,
+    mut expanded_dirs: Signal<HashSet<PathBuf>>,
+    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    mut status: Signal<String>,
+    dir: PathBuf,
+) {
+    // "Enter" a directory (make it the new sidebar root).
+    set_workspace_dir(current_dir, expanded_dirs, dir_cache, status, dir);
+}
+
+fn parent_dir(p: &PathBuf) -> Option<PathBuf> {
+    p.parent().map(|x| x.to_path_buf())
+}
+
+
+
+fn render_dir_children(
+    parent: &PathBuf,
+    depth: usize,
+    expanded_dirs: Signal<HashSet<PathBuf>>,
+    dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    tabs: Signal<Vec<Tab>>,
+    active_tab: Signal<usize>,
+    status: Signal<String>,
+) -> Element {
+    let cache = dir_cache();
+    let entries = cache.get(parent).cloned().unwrap_or_default();
+
+    rsx! {
+        for item in entries {
+            {render_tree_item(
+                item,
+                depth,
+                expanded_dirs.clone(),
+                dir_cache.clone(),
+                tabs.clone(),
+                active_tab.clone(),
+                status.clone(),
+            )}
+        }
+    }
+}
+
+fn render_tree_item(
+    item: DirEntryItem,
+    depth: usize,
+    expanded_dirs: Signal<HashSet<PathBuf>>,
+    dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    tabs: Signal<Vec<Tab>>,
+    active_tab: Signal<usize>,
+    status: Signal<String>,
+) -> Element {
+    let indent = 12 + (depth as i32 * 14);
+    let name = item.name.clone();
+    let path = item.path.clone();
+
+    if item.is_dir {
+        let is_expanded = expanded_dirs().contains(&path);
+        let arrow = if is_expanded { "▼" } else { "▶" };
+
+        rsx! {
+            div {
+                button {
+                    class: "tree-item",
+                    style: "padding-left: {indent}px;",
+                    onclick: move |_| {
+                        toggle_directory(expanded_dirs.clone(), dir_cache.clone(), status.clone(), path.clone());
+                    },
+                    span { class: "tree-icon", "{arrow}" }
+                    span { class: "tree-name", "{name}" }
+                }
+
+                if is_expanded {
+                    div {
+                        {render_dir_children(
+                            &path,
+                            depth + 1,
+                            expanded_dirs.clone(),
+                            dir_cache.clone(),
+                            tabs.clone(),
+                            active_tab.clone(),
+                            status.clone(),
+                        )}
+                    }
+                }
+            }
+        }
+    } else {
+        rsx! {
+            button {
+                class: "tree-item",
+                style: "padding-left: {indent}px;",
+                onclick: move |_| {
+                    let tabs2 = tabs.clone();
+                    let act2 = active_tab.clone();
+                    let status2 = status.clone();
+                    let p2 = path.clone();
+                    spawn(async move { open_path_in_tab(tabs2, act2, status2, p2).await; });
+                },
+                span { class: "tree-icon", " " }
+                span { class: "tree-name", "{name}" }
+            }
+        }
+    }
+}
+
 
 /// Build CSS + bundled font
 /// Place JetBrainsMono-Regular.ttf at: assets/fonts/JetBrainsMono-Regular.ttf
@@ -592,6 +772,66 @@ html, body {
   font-size: 12px;
 }
 
+/* ===== SIDEBAR TREE ===== */
+.tree-item {
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.tree-icon {
+  width: 14px;
+  color: var(--muted);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sidebar-action-btn {
+  height: 22px;
+  min-width: 22px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.sidebar-action-btn:hover {
+  border-color: var(--border);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+
+
 /* ===== CONFIRM MODAL ===== */
 .modal-backdrop {
   position: fixed;
@@ -763,7 +1003,7 @@ async fn open_path_in_tab(
     path: PathBuf,
 ) {
     if path.is_dir() {
-        status.set(format!("Directory click does nothing (yet): {}", path.display()));
+        status.set(format!("That\'s a folder: {} (use the arrow to expand it)", path.display()));
         return;
     }
 
@@ -904,7 +1144,8 @@ pub fn app() -> Element {
 
     // Sidebar (directory)
     let mut current_dir = use_signal(|| Option::<PathBuf>::None);
-    let mut dir_contents = use_signal(|| Vec::<(String, PathBuf)>::new());
+    let mut expanded_dirs = use_signal(|| HashSet::<PathBuf>::new());
+    let mut dir_cache = use_signal(|| HashMap::<PathBuf, Vec<DirEntryItem>>::new());
     let mut sidebar_collapsed = use_signal(|| false);
     let mut sidebar_width = use_signal(|| 280.0f64);
     let mut sidebar_resizing = use_signal(|| false);
@@ -993,19 +1234,6 @@ pub fn app() -> Element {
                                 "Open - Ctrl+O"
                             }
 
-                            // Open directory
-                            button {
-                                class: "menu-item",
-                                onclick: move |_| {
-                                    file_open.set(false);
-                                    let current_dir2 = current_dir.clone();
-                                    let dir_contents2 = dir_contents.clone();
-                                    let mut status2 = status.clone();
-                                    spawn(async move { open_directory(current_dir2, dir_contents2, status2).await; });
-                                },
-                                "Open Directory - Ctrl+Shift+O"
-                            }
-
                             // Save
                             button {
                                 class: "menu-item",
@@ -1034,14 +1262,28 @@ pub fn app() -> Element {
 
                             div { class: "menu-sep" }
 
+                            // Open directory
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_open.set(false);
+                                    let current_dir2 = current_dir.clone();
+                                    let expanded_dirs2 = expanded_dirs.clone();
+                                    let dir_cache2 = dir_cache.clone();
+                                    let mut status2 = status.clone();
+                                    spawn(async move { open_directory(current_dir2, expanded_dirs2, dir_cache2, status2).await; });
+                                },
+                                "Open Folder - Ctrl+Shift+O"
+                            }
+
                             // Close directory
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_open.set(false);
-                                    close_directory(current_dir.clone(), dir_contents.clone(), status.clone());
+                                    close_directory(current_dir.clone(), expanded_dirs.clone(), dir_cache.clone(), status.clone());
                                 },
-                                "Close Directory - Ctrl+Shift+C"
+                                "Close Folder - Ctrl+Shift+C"
                             }
 
                             div { class: "menu-sep" }
@@ -1147,7 +1389,6 @@ pub fn app() -> Element {
                             div { class: "sidebar",
                                 div {
                                     class: "sidebar-header",
-                                    onclick: move |_| sidebar_collapsed.set(true),
 
                                     div {
                                         class: "sidebar-title",
@@ -1160,40 +1401,68 @@ pub fn app() -> Element {
                                         }
                                     }
 
-                                    button { class: "sidebar-collapse-btn", "×" }
+                                    div { class: "sidebar-actions",
+                                        button {
+                                            class: "sidebar-action-btn",
+                                            onclick: move |e| {
+                                                e.stop_propagation();
+                                                let current_dir2 = current_dir.clone();
+                                                let expanded_dirs2 = expanded_dirs.clone();
+                                                let dir_cache2 = dir_cache.clone();
+                                                let mut status2 = status.clone();
+                                                spawn(async move { open_directory(current_dir2, expanded_dirs2, dir_cache2, status2).await; });
+                                            },
+                                            "Open"
+                                        }
+
+                                        button {
+                                            class: "sidebar-action-btn",
+                                            onclick: move |e| {
+                                                e.stop_propagation();
+                                                if let Some(root) = current_dir() {
+                                                    if let Some(parent) = parent_dir(&root) {
+                                                        enter_directory(
+                                                            current_dir.clone(),
+                                                            expanded_dirs.clone(),
+                                                            dir_cache.clone(),
+                                                            status.clone(),
+                                                            parent,
+                                                        );
+                                                    } else {
+                                                        status.set("Already at filesystem root".to_string());
+                                                    }
+                                                }
+                                            },
+                                            "Up"
+                                        }
+
+                                        button {
+                                            class: "sidebar-action-btn",
+                                            onclick: move |e| {
+                                                e.stop_propagation();
+                                                sidebar_collapsed.set(true);
+                                            },
+                                            "×"
+                                        }
+                                    }
                                 }
 
                                 div { class: "sidebar-contents",
-                                    if current_dir().is_some() {
-                                        for (name, path) in dir_contents().iter() {
-                                            button {
-                                                class: "sidebar-item",
-                                                onclick: {
-                                                    let tabs2 = tabs.clone();
-                                                    let act2 = active_tab.clone();
-                                                    let mut status2 = status.clone();
-                                                    let p = path.clone();
-                                                    let n = name.clone();
-                                                    move |_| {
-                                                        if p.is_dir() {
-                                                            status2.set(format!("Directory: {n}"));
-                                                        } else {
-                                                            let tabs3 = tabs2.clone();
-                                                            let act3 = act2.clone();
-                                                            let status3 = status2.clone();
-                                                            let p2 = p.clone();
-                                                            spawn(async move { open_path_in_tab(tabs3, act3, status3, p2).await; });
-                                                        }
-                                                    }
-                                                },
-                                                if path.is_dir() { "[DIR] " } else { "[FILE] " }
-                                                "{name}"
-                                            }
-                                        }
+                                    if let Some(root) = current_dir() {
+                                        {render_dir_children(
+                                            &root,
+                                            0,
+                                            expanded_dirs.clone(),
+                                            dir_cache.clone(),
+                                            tabs.clone(),
+                                            active_tab.clone(),
+                                            status.clone(),
+                                        )}
                                     } else {
                                         div { class: "sidebar-empty", "No directory open" }
                                     }
                                 }
+
                             }
                         }
 
@@ -1258,16 +1527,17 @@ pub fn app() -> Element {
                                         // Ctrl/Cmd + Shift + O : Open directory
                                         (true, "o") => {
                                             let current_dir2 = current_dir.clone();
-                                            let dir_contents2 = dir_contents.clone();
+                                            let expanded_dirs2 = expanded_dirs.clone();
+                                            let dir_cache2 = dir_cache.clone();
                                             let mut status2 = status.clone();
-                                            spawn(async move { open_directory(current_dir2, dir_contents2, status2).await; });
+                                            spawn(async move { open_directory(current_dir2, expanded_dirs2, dir_cache2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;
                                         }
                                         // Ctrl/Cmd + Shift + C : Close directory
                                         (true, "c") => {
-                                            close_directory(current_dir.clone(), dir_contents.clone(), status.clone());
+                                            close_directory(current_dir.clone(), expanded_dirs.clone(), dir_cache.clone(), status.clone());
                                             e.prevent_default();
                                             e.stop_propagation();
                                             return;

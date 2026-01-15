@@ -213,10 +213,10 @@ fn set_workspace_dir(
 }
 
 async fn open_directory(
-    mut current_dir: Signal<Option<PathBuf>>,
-    mut expanded_dirs: Signal<HashSet<PathBuf>>,
-    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
-    mut status: Signal<String>,
+    current_dir: Signal<Option<PathBuf>>,
+    expanded_dirs: Signal<HashSet<PathBuf>>,
+    dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    status: Signal<String>,
 ) {
     if let Some(handle) = AsyncFileDialog::new().pick_folder().await {
         let path = handle.path().to_path_buf();
@@ -269,10 +269,10 @@ fn toggle_directory(
 }
 
 fn enter_directory(
-    mut current_dir: Signal<Option<PathBuf>>,
-    mut expanded_dirs: Signal<HashSet<PathBuf>>,
-    mut dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
-    mut status: Signal<String>,
+    current_dir: Signal<Option<PathBuf>>,
+    expanded_dirs: Signal<HashSet<PathBuf>>,
+    dir_cache: Signal<HashMap<PathBuf, Vec<DirEntryItem>>>,
+    status: Signal<String>,
     dir: PathBuf,
 ) {
     // "Enter" a directory (make it the new sidebar root).
@@ -1135,7 +1135,7 @@ pub fn app() -> Element {
     let css = bundled_css();
 
     // Tabs
-    let mut tabs = use_signal(|| vec![Tab::new_untitled(1)]);
+    let tabs = use_signal(|| vec![Tab::new_untitled(1)]);
     let mut active_tab = use_signal(|| 0usize);
 
     // UI
@@ -1143,9 +1143,9 @@ pub fn app() -> Element {
     let mut status = use_signal(|| "".to_string());
 
     // Sidebar (directory)
-    let mut current_dir = use_signal(|| Option::<PathBuf>::None);
-    let mut expanded_dirs = use_signal(|| HashSet::<PathBuf>::new());
-    let mut dir_cache = use_signal(|| HashMap::<PathBuf, Vec<DirEntryItem>>::new());
+    let current_dir = use_signal(|| Option::<PathBuf>::None);
+    let expanded_dirs = use_signal(|| HashSet::<PathBuf>::new());
+    let dir_cache = use_signal(|| HashMap::<PathBuf, Vec<DirEntryItem>>::new());
     let mut sidebar_collapsed = use_signal(|| false);
     let mut sidebar_width = use_signal(|| 280.0f64);
     let mut sidebar_resizing = use_signal(|| false);
@@ -1177,7 +1177,7 @@ pub fn app() -> Element {
         .map(|t| t.dirty)
         .unwrap_or(false);
 
-    let active_path = tabs()
+    let _active_path = tabs()
         .get(active_idx)
         .and_then(|t| t.path.clone());
 
@@ -1228,7 +1228,7 @@ pub fn app() -> Element {
                                     file_open.set(false);
                                     let tabs2 = tabs.clone();
                                     let act2 = active_tab.clone();
-                                    let mut status2 = status.clone();
+                                    let status2 = status.clone();
                                     spawn(async move { open_dialog_add_tab(tabs2, act2, status2).await; });
                                 },
                                 "Open - Ctrl+O"
@@ -1241,7 +1241,7 @@ pub fn app() -> Element {
                                     file_open.set(false);
                                     let tabs2 = tabs.clone();
                                     let act2 = active_tab.clone();
-                                    let mut status2 = status.clone();
+                                    let status2 = status.clone();
                                     spawn(async move { save_active_or_save_as(tabs2, act2, status2).await; });
                                 },
                                 "Save - Ctrl+S"
@@ -1254,7 +1254,7 @@ pub fn app() -> Element {
                                     file_open.set(false);
                                     let tabs2 = tabs.clone();
                                     let act2 = active_tab.clone();
-                                    let mut status2 = status.clone();
+                                    let status2 = status.clone();
                                     spawn(async move { save_as_active(tabs2, act2, status2).await; });
                                 },
                                 "Save As - Ctrl+Shift+S"
@@ -1270,7 +1270,7 @@ pub fn app() -> Element {
                                     let current_dir2 = current_dir.clone();
                                     let expanded_dirs2 = expanded_dirs.clone();
                                     let dir_cache2 = dir_cache.clone();
-                                    let mut status2 = status.clone();
+                                    let status2 = status.clone();
                                     spawn(async move { open_directory(current_dir2, expanded_dirs2, dir_cache2, status2).await; });
                                 },
                                 "Open Folder - Ctrl+Shift+O"
@@ -1409,7 +1409,7 @@ pub fn app() -> Element {
                                                 let current_dir2 = current_dir.clone();
                                                 let expanded_dirs2 = expanded_dirs.clone();
                                                 let dir_cache2 = dir_cache.clone();
-                                                let mut status2 = status.clone();
+                                                let status2 = status.clone();
                                                 spawn(async move { open_directory(current_dir2, expanded_dirs2, dir_cache2, status2).await; });
                                             },
                                             "Open"
@@ -1518,7 +1518,7 @@ pub fn app() -> Element {
                                         (false, "o") => {
                                             let tabs2 = tabs.clone();
                                             let act2 = active_tab.clone();
-                                            let mut status2 = status.clone();
+                                            let status2 = status.clone();
                                             spawn(async move { open_dialog_add_tab(tabs2, act2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
@@ -1529,7 +1529,7 @@ pub fn app() -> Element {
                                             let current_dir2 = current_dir.clone();
                                             let expanded_dirs2 = expanded_dirs.clone();
                                             let dir_cache2 = dir_cache.clone();
-                                            let mut status2 = status.clone();
+                                            let status2 = status.clone();
                                             spawn(async move { open_directory(current_dir2, expanded_dirs2, dir_cache2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
@@ -1546,7 +1546,7 @@ pub fn app() -> Element {
                                         (false, "s") => {
                                             let tabs2 = tabs.clone();
                                             let act2 = active_tab.clone();
-                                            let mut status2 = status.clone();
+                                            let status2 = status.clone();
                                             spawn(async move { save_active_or_save_as(tabs2, act2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
@@ -1556,7 +1556,7 @@ pub fn app() -> Element {
                                         (true, "s") => {
                                             let tabs2 = tabs.clone();
                                             let act2 = active_tab.clone();
-                                            let mut status2 = status.clone();
+                                            let status2 = status.clone();
                                             spawn(async move { save_as_active(tabs2, act2, status2).await; });
                                             e.prevent_default();
                                             e.stop_propagation();
@@ -1814,7 +1814,7 @@ pub fn app() -> Element {
 
                                     let tabs2 = tabs.clone();
                                     let act2 = active_tab.clone();
-                                    let mut status2 = status.clone();
+                                    let status2 = status.clone();
                                     let mut pending2 = pending_action.clone();
 
                                     spawn(async move {

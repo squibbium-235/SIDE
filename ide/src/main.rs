@@ -461,7 +461,7 @@ html, body {
   position: absolute;
   top: 30px;
   left: 0;
-  min-width: 350px;
+  min-width: 300px;
   background: #0c0f16;
   border: 1px solid var(--border);
   box-shadow: 0 8px 30px rgba(0,0,0,0.35);

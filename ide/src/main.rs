@@ -658,7 +658,7 @@ html, body {
 
 /* ===== SIDEBAR ===== */
 .sidebar-resize {
-  width: 280px;
+  width: 200px;
   min-width: 180px;
   max-width: 620px;
   background: var(--panel);

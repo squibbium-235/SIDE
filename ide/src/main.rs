@@ -720,35 +720,41 @@ async fn open_dialog_add_tab(
         }
 
         status.set(format!("Opening {} ...", path.display()));
+
         match std::fs::read_to_string(&path) {
             Ok(contents) => {
                 let lines = split_lines(&contents);
 
-            let mut v = tabs();
-            let id = next_tab_id(&v);
-            let language = maybe_disable_highlighting(&path, crate::syntax::detect_language_from_path(&path));
-            v.push(Tab {
-                id,
-                path: Some(path.clone()),
-                language,
-                dirty: false,
-                editor: EditorState {
-                    lines,
-                    cursor: Cursor { line: 0, col: 0 },
-                    scroll_x: 0.0,
-                    scroll_y: 0.0,
-                },
-            });
-            let new_idx = v.len().saturating_sub(1);
-            tabs.set(v);
-            active_tab.set(new_idx);
-            status.set(format!("Opened {}", path.display()));
-        }
+                let mut v = tabs();
+                let id = next_tab_id(&v);
+                let language = maybe_disable_highlighting(
+                    &path,
+                    crate::syntax::detect_language_from_path(&path),
+                );
+
+                v.push(Tab {
+                    id,
+                    path: Some(path.clone()),
+                    language,
+                    dirty: false,
+                    editor: EditorState {
+                        lines,
+                        cursor: Cursor { line: 0, col: 0 },
+                        scroll_x: 0.0,
+                        scroll_y: 0.0,
+                    },
+                });
+
+                let new_idx = v.len().saturating_sub(1);
+                tabs.set(v);
+                active_tab.set(new_idx);
+                status.set(format!("Opened {}", path.display()));
             }
             Err(err) => status.set(format!("Open failed: {err}")),
         }
     }
 }
+
 
 async fn open_path_in_tab(
     mut tabs: Signal<Vec<Tab>>,

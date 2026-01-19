@@ -481,6 +481,11 @@ html, body {
   pointer-events: none;
 }
 
+/* Fix Scrolling maybe */
+.scroll, .textpane, .editor-content, .gutter {
+  overflow-anchor: none;
+}
+
 /* ===== SIDEBAR ===== */
 .sidebar-resize {
   width: 280px;
@@ -1237,8 +1242,14 @@ pub fn app() -> Element {
 
                         onscroll: move |e| {
                             let d = e.data();
-                            scroll_top.set(d.scroll_top() as f64);
-                            viewport_h.set(d.client_height() as f64);
+                            let new_top = d.scroll_top() as f64;
+                            if (new_top - scroll_top()).abs() > 0.5 {
+                                scroll_top.set(new_top);
+                            }
+                            let new_h = d.client_height() as f64;
+                            if new_h >1.0 && (new_h - viewport_h()).abs() > 0.5 {
+                                viewport_h.set(new_h);
+                            }
                         },
 
                         onkeydown: move |e| {

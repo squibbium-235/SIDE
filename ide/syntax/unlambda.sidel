@@ -1,0 +1,41 @@
+default_color = "#D4D4D4"
+
+# Unlambda syntax highlighting
+# Core combinators: s k i v c d e
+# Application operator: `
+# Output: .x (print char), and sometimes ?x (read/compare char) in some variants.
+
+# ---------------- Comments ----------------
+# Some Unlambda implementations use # for comments.
+[[rule]]
+name = "comment"
+pattern = "#.*$"
+color = "#6A9955"
+priority = 260
+
+# ---------------- Application operator ----------------
+[[rule]]
+name = "apply"
+pattern = "`"
+color = "#C586C0"
+priority = 300
+
+# ---------------- Combinators ----------------
+[[rule]]
+name = "combinator"
+pattern = "\\b[sikvcde]\\b"
+color = "#569CD6"
+priority = 240
+
+# ---------------- Output / I-O-ish tokens ----------------
+[[rule]]
+name = "output"
+pattern = "\\.[^\\s]"
+color = "#DCDCAA"
+priority = 230
+
+[[rule]]
+name = "input"
+pattern = "\\?[^\\s]"
+color = "#4EC9B0"
+priority = 225

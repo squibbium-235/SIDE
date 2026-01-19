@@ -1,0 +1,18 @@
+default_color = "#D4D4D4"
+
+# Ook! (Brainfuck in orangutan cosplay) syntax highlighting
+# Commands are pairs like: "Ook. Ook?" etc.
+
+# Highlight whole two-token commands
+[[rule]]
+name = "command"
+pattern = "\\bOok[.!?]\\s+Ook[.!?]\\b"
+color = "#C586C0"
+priority = 260
+
+# Highlight each Ook token (in case spacing is weird)
+[[rule]]
+name = "ook_token"
+pattern = "\\bOok[.!?]\\b"
+color = "#569CD6"
+priority = 200

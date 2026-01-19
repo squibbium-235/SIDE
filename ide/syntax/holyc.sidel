@@ -1,0 +1,108 @@
+default_color = "#D4D4D4"
+
+# HolyC (TempleOS) syntax highlighting
+# Notes:
+# - HolyC is C-like with some TempleOS-specific types and "$" compiler directives.
+# - Priorities matter because the highlighter applies the first (highest priority) rule to each character.
+
+# ---------------- Comments ----------------
+[[rule]]
+name = "comment_block"
+color = "#6A9955"
+priority = 300
+pattern = "/\\*[\\s\\S]*?\\*/"
+
+[[rule]]
+name = "comment_line"
+color = "#6A9955"
+priority = 300
+pattern = "//.*$"
+
+# ---------------- Strings & chars ----------------
+# Escapes first so they can override string color
+[[rule]]
+name = "escape"
+color = "#D7BA7D"
+priority = 270
+pattern = "\\\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{1,3}|[abfnrtv\\\\'\"?])"
+
+[[rule]]
+name = "string"
+color = "#CE9178"
+priority = 250
+pattern = "\"(\\\\.|[^\"])*\""
+
+[[rule]]
+name = "char"
+color = "#CE9178"
+priority = 245
+pattern = "'(\\\\.|[^'])+'"
+
+# ---------------- Preprocessor / directives ----------------
+[[rule]]
+name = "preprocessor_directive"
+color = "#C586C0"
+priority = 235
+pattern = "^\\s*#\\s*(include|define|undef|if|ifdef|ifndef|elif|else|endif|error|pragma|line)\\b"
+
+[[rule]]
+name = "include_angle"
+color = "#CE9178"
+priority = 240
+pattern = "(?<=^\\s*#\\s*include\\s*)<[^>]+>"
+
+[[rule]]
+name = "include_quote"
+color = "#CE9178"
+priority = 240
+pattern = "(?<=^\\s*#\\s*include\\s*)\"(\\\\.|[^\"])*\""
+
+# TempleOS/HolyC compiler directives often start with '$'
+[[rule]]
+name = "compiler_directive"
+color = "#C586C0"
+priority = 234
+pattern = "\\$[A-Za-z_][A-Za-z0-9_]*"
+
+# ---------------- Numbers ----------------
+[[rule]]
+name = "number"
+color = "#B5CEA8"
+priority = 210
+pattern = "\\b(0x[0-9A-Fa-f]+|0b[01]+|\\d+\\.\\d*|\\d*\\.\\d+|\\d+)([eE][+-]?\\d+)?\\b"
+
+# ---------------- Types ----------------
+[[rule]]
+name = "type"
+color = "#4EC9B0"
+priority = 190
+pattern = "\\b(U0|U8|U16|U32|U64|I8|I16|I32|I64|F32|F64|Bool|Char|Str|Ptr|USize|ISize)\\b"
+
+# ---------------- Keywords ----------------
+[[rule]]
+name = "keyword"
+color = "#569CD6"
+priority = 180
+pattern = "\\b(auto|break|case|catch|class|const|continue|default|do|else|enum|extern|for|goto|if|inline|new|delete|operator|private|protected|public|register|return|sizeof|static|struct|switch|try|typedef|union|volatile|while|asm)\\b"
+
+# ---------------- Constants ----------------
+[[rule]]
+name = "constant"
+color = "#4FC1FF"
+priority = 175
+pattern = "\\b(NULL|true|false|TRUE|FALSE)\\b"
+
+# ---------------- Macros / ALL_CAPS identifiers ----------------
+[[rule]]
+name = "macro"
+color = "#C586C0"
+priority = 170
+pattern = "\\b[A-Z_][A-Z0-9_]*\\b"
+
+# ---------------- Function names ----------------
+# Avoid highlighting control-flow keywords as functions
+[[rule]]
+name = "function"
+color = "#DCDCAA"
+priority = 160
+pattern = "\\b(?!if\\b|for\\b|while\\b|switch\\b|return\\b|sizeof\\b)[A-Za-z_][A-Za-z0-9_]*(?=\\s*\\()"

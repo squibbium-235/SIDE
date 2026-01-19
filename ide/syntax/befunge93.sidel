@@ -1,0 +1,73 @@
+default_color = "#D4D4D4"
+
+# Befunge-93 syntax highlighting
+# Befunge is a 2D language. The "commands" are single characters.
+# We highlight instruction characters, string mode, numbers, and flow arrows.
+
+# ---------------- Strings ----------------
+# In Befunge, string mode is toggled with ". This highlights "..." on a line.
+[[rule]]
+name = "string"
+pattern = "\"[^\"]*\""
+color = "#CE9178"
+priority = 260
+
+# ---------------- Digits ----------------
+[[rule]]
+name = "digit"
+pattern = "\\b[0-9]\\b"
+color = "#B5CEA8"
+priority = 250
+
+# ---------------- Flow control arrows ----------------
+[[rule]]
+name = "arrows"
+pattern = "[<>^v]"
+color = "#569CD6"
+priority = 240
+
+# ---------------- Stack ops ----------------
+# : dup, \\ swap, $ pop
+[[rule]]
+name = "stack_ops"
+pattern = "[:\\\\$]"
+color = "#4EC9B0"
+priority = 235
+
+# ---------------- Arithmetic / logic ----------------
+[[rule]]
+name = "arith_logic"
+pattern = "[+\\-*/%!`]"
+color = "#B5CEA8"
+priority = 230
+
+# ---------------- I/O ----------------
+# . output int, , output char
+[[rule]]
+name = "io"
+pattern = "[\\.,]"
+color = "#DCDCAA"
+priority = 225
+
+# ---------------- Control / misc ----------------
+# ? random dir, _ | conditionals, # trampoline
+[[rule]]
+name = "control"
+pattern = "[\\?_\\|#]"
+color = "#C586C0"
+priority = 220
+
+# ---------------- Storage ----------------
+# g/get, p/put
+[[rule]]
+name = "storage"
+pattern = "[gp]"
+color = "#9CDCFE"
+priority = 215
+
+# ---------------- Program end ----------------
+[[rule]]
+name = "end"
+pattern = "@"
+color = "#4FC1FF"
+priority = 300

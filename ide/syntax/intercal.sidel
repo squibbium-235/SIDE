@@ -1,0 +1,48 @@
+default_color = "#D4D4D4"
+
+# INTERCAL syntax highlighting (best-effort)
+# INTERCAL is basically a prank disguised as a programming language.
+
+# ---------------- Comments ----------------
+# Many INTERCAL dialects use parentheses for comments.
+[[rule]]
+name = "comment"
+pattern = "\\(.*?\\)"
+color = "#6A9955"
+priority = 260
+
+# ---------------- Strings ----------------
+[[rule]]
+name = "string"
+pattern = "'(?:[^'\\\\]|\\\\.)*'"
+color = "#CE9178"
+priority = 240
+
+# ---------------- Politeness (PLEASE) ----------------
+[[rule]]
+name = "please"
+pattern = "\\bPLEASE\\b"
+color = "#4FC1FF"
+priority = 255
+
+# ---------------- Keywords ----------------
+[[rule]]
+name = "keyword"
+pattern = "\\b(DO|READ\\s+OUT|WRITE\\s+IN|COME\\s+FROM|NEXT|FORGET|RESUME|ABSTAIN\\s+FROM|REINSTATE|IGNORE|REMEMBER|GIVE\\s+UP|TRY\\s+AGAIN)\\b"
+color = "#569CD6"
+priority = 230
+
+# ---------------- Variables ----------------
+# Spot variables: .1 .2 .123  and :1 :2 :123  (common forms)
+[[rule]]
+name = "spot"
+pattern = "[\\.:]\\d+"
+color = "#9CDCFE"
+priority = 220
+
+# ---------------- Numbers ----------------
+[[rule]]
+name = "number"
+pattern = "\\b\\d+\\b"
+color = "#B5CEA8"
+priority = 210

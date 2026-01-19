@@ -1,0 +1,96 @@
+default_color = "#D4D4D4"
+
+# LOLCODE (v1.2-ish) syntax highlighting
+# Notes:
+# - Multi-word keywords are highlighted as a whole where practical.
+# - This is regex-based, so it's a best-effort, not a full parser.
+
+# ---------------- Comments ----------------
+# OBTW ... TLDR (block comment)
+[[rule]]
+name = "comment_block"
+pattern = "(?s)\\bOBTW\\b[\\s\\S]*?\\bTLDR\\b"
+color = "#6A9955"
+priority = 300
+
+# BTW ... (line comment)
+[[rule]]
+name = "comment_line"
+pattern = "\\bBTW\\b.*$"
+color = "#6A9955"
+priority = 290
+
+# ---------------- Strings ----------------
+[[rule]]
+name = "string"
+pattern = "\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 260
+
+[[rule]]
+name = "escape"
+pattern = "\\\\."
+color = "#D7BA7D"
+priority = 265
+
+# ---------------- Literals ----------------
+[[rule]]
+name = "boolean"
+pattern = "\\b(WIN|FAIL)\\b"
+color = "#569CD6"
+priority = 240
+
+[[rule]]
+name = "null"
+pattern = "\\bNOOB\\b"
+color = "#4FC1FF"
+priority = 235
+
+[[rule]]
+name = "number"
+pattern = "\\b-?\\d+(?:\\.\\d+)?\\b"
+color = "#B5CEA8"
+priority = 230
+
+# ---------------- Keywords ----------------
+# Program structure
+[[rule]]
+name = "structure"
+pattern = "\\b(HAI|KTHXBYE|CAN\\s+HAS|VISIBLE|INVISIBLE|GIMMEH|SMOOSH|AN)\\b"
+color = "#569CD6"
+priority = 210
+
+# Variables / assignment
+[[rule]]
+name = "variables"
+pattern = "\\b(I\\s+HAS\\s+A|ITZ|R|MAEK|IS\\s+NOW\\s+A)\\b"
+color = "#569CD6"
+priority = 205
+
+# Conditionals
+[[rule]]
+name = "conditionals"
+pattern = "\\b(O\\s+RLY\\?|YA\\s+RLY|MEBBE|NO\\s+WAI|OIC|WTF\\?|OMG|OMGWTF|GTFO)\\b"
+color = "#569CD6"
+priority = 200
+
+# Loops / functions
+[[rule]]
+name = "flow"
+pattern = "\\b(IM\\s+IN\\s+YR|IM\\s+OUTTA\\s+YR|UPPIN|NERFIN|TIL|WILE|HOW\\s+IZ\\s+I|IF\\s+U\\s+SAY\\s+SO|FOUND\\s+YR|I\\s+IZ|MKAY)\\b"
+color = "#569CD6"
+priority = 195
+
+# Operators (multi-word)
+[[rule]]
+name = "operators"
+pattern = "\\b(SUM\\s+OF|DIFF\\s+OF|PRODUKT\\s+OF|QUOSHUNT\\s+OF|MOD\\s+OF|BIGGR\\s+OF|SMALLR\\s+OF|BOTH\\s+OF|EITHER\\s+OF|WON\\s+OF|NOT|ALL\\s+OF|ANY\\s+OF|BOTH\\s+SAEM|DIFFRINT)\\b"
+color = "#4EC9B0"
+priority = 190
+
+# Identifiers (variables are usually ALLCAPS_WITH_UNDERSCORES)
+[[rule]]
+name = "identifier"
+pattern = "\\b[A-Z][A-Z0-9_]*\\b"
+color = "#9CDCFE"
+priority = 120

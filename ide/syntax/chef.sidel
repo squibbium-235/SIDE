@@ -1,0 +1,46 @@
+default_color = "#D4D4D4"
+
+# Chef syntax highlighting (recipe-as-program)
+# This is intentionally lightweight.
+
+# ---------------- Section headers ----------------
+[[rule]]
+name = "section"
+pattern = "(?m)^(Ingredients\\.|Method\\.|Cooking\\s+time\\.|Pre-heat\\s+oven\\.|Serves\\s+(?:\\d+|\\w+)).*$"
+color = "#C586C0"
+priority = 260
+
+# ---------------- Comments (parentheses) ----------------
+[[rule]]
+name = "comment"
+pattern = "\\(.*?\\)"
+color = "#6A9955"
+priority = 250
+
+# ---------------- Measurements / numbers ----------------
+[[rule]]
+name = "number"
+pattern = "\\b\\d+(?:\\.\\d+)?\\b"
+color = "#B5CEA8"
+priority = 240
+
+[[rule]]
+name = "unit"
+pattern = "\\b(g|kg|ml|l|tsp|tbsp|cup|cups|pinch|dash|oz|lb|minutes?|hours?)\\b"
+color = "#4EC9B0"
+priority = 230
+
+# ---------------- Common Chef verbs ----------------
+[[rule]]
+name = "verbs"
+pattern = "\\b(Take|Put|Fold|Add|Remove|Combine|Mix|Stir|Beat|Chop|Slice|Dice|Pour|Drain|Liquefy|Refrigerate|Bake|Cook|Boil|Simmer|Serve)\\b"
+color = "#569CD6"
+priority = 220
+
+# ---------------- Ingredients (rough heuristic) ----------------
+# Lines that look like: "2 cups sugar"
+[[rule]]
+name = "ingredient_line"
+pattern = "(?m)^\\s*\\d+(?:\\.\\d+)?\\s+\\w+(?:\\s+\\w+)*\\s*$"
+color = "#DCDCAA"
+priority = 210

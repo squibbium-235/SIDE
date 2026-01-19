@@ -1,0 +1,32 @@
+default_color = "#D4D4D4"
+
+# Brainfuck ignores anything that isn't one of the 8 commands.
+# So we only color the actual commands.
+
+# Loops
+[[rule]]
+name = "loop"
+pattern = "[\\[\\]]"
+color = "#C586C0"
+priority = 300
+
+# Pointer moves
+[[rule]]
+name = "pointer"
+pattern = "[<>]"
+color = "#569CD6"
+priority = 250
+
+# Arithmetic
+[[rule]]
+name = "arithmetic"
+pattern = "[+\\-]"
+color = "#B5CEA8"
+priority = 240
+
+# I/O
+[[rule]]
+name = "io"
+pattern = "[\\.,]"
+color = "#DCDCAA"
+priority = 230

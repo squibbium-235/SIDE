@@ -82,6 +82,15 @@ pub fn detect_language_from_path(path: &Path) -> String {
         "c" | "h" => "c",
         "toml" => "toml",
         "cpp" | "hpp" | "hh" | "hxx" | "cc" | "cxx" => "cpp",
+        "bf" | "b" => "brainfuck",
+        "hc" => "holyc",
+        "lol" | "lols" => "lolcode",
+        "b93" | "be" | "befunge" => "befunge93",
+        "b98" => "befunge98",
+        "i" | "3i" | "4i" | "7i" => "intercal",
+        "ook" => "ook",
+        "chef" => "chef",
+        "unl" => "unlambda",
         _ => "plain",
     }
     .to_string()

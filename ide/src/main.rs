@@ -931,6 +931,7 @@ pub fn app() -> Element {
 
     // for smooth scrolling (currently not used heavily, but kept)
     let mut scroll_top = use_signal(|| 0.0f64);
+    let mut scroll_left = use_signal(|| 0.0f64);
     let mut viewport_h = use_signal(|| 600.0f64);
 
     // derived
@@ -1246,6 +1247,10 @@ pub fn app() -> Element {
                             if (new_top - scroll_top()).abs() > 0.5 {
                                 scroll_top.set(new_top);
                             }
+                            let new_left = d.scroll_left() as f64;
+                            if (new_left - scroll_left()).abs() > 0.5 {
+                                scroll_left.set(new_left);
+                            }
                             let new_h = d.client_height() as f64;
                             if new_h >1.0 && (new_h - viewport_h()).abs() > 0.5 {
                                 viewport_h.set(new_h);
@@ -1412,8 +1417,15 @@ pub fn app() -> Element {
 
                                 onclick: move |e| {
                                     let p = e.data().coordinates().element();
-                                    let content_x = (p.x - PAD_X_PX) + CLICK_COL_BIAS_PX;
-                                    let content_y = (p.y - PAD_Y_PX) + scroll_top();
+                                    // Convert click position in the viewport into an absolute document position.
+                                    // Don't try to infer absolute coords from a single "y" when the DOM is virtualized.
+                                    let view_start_line = ((scroll_top() / line_px()).floor() as isize).max(0) as usize;
+                                    let local_y = (p.y - PAD_Y_PX).max(0.0);
+                                    let clicked_line = view_start_line + (local_y / line_px()).floor() as usize;
+
+                                    let view_start_col = ((scroll_left() / char_px()).floor() as isize).max(0) as usize;
+                                    let local_x = ((p.x - PAD_X_PX) + CLICK_COL_BIAS_PX).max(0.0);
+                                    let clicked_col = view_start_col + (local_x / char_px()).floor() as usize;
 
                                     set_active_tab_editor(tabs.clone(), active_tab.clone(), |t| {
                                         let s = &mut t.editor;
@@ -1421,21 +1433,13 @@ pub fn app() -> Element {
                                             lines_mut(s).push(String::new());
                                         }
 
-                                        let mut line = if content_y <= 0.0 {
-                                            0
-                                        } else {
-                                            (content_y / line_px()).floor() as usize
-                                        };
+                                        let mut line = clicked_line;
 
                                         if line >= s.lines.len() {
                                             line = s.lines.len() - 1;
                                         }
 
-                                        let mut col = if content_x <= 0.0 {
-                                            0
-                                        } else {
-                                            (content_x / char_px()).floor() as usize
-                                        };
+                                        let mut col = clicked_col;
 
                                         let max_col = s.lines[line].len();
                                         if col > max_col {

@@ -285,7 +285,7 @@ html, body {
   position: absolute;
   top: 30px;
   left: 0;
-  min-width: 250px;
+  min-width: 300px;
   background: #0c0f16;
   border: 1px solid var(--border);
   box-shadow: 0 8px 30px rgba(0,0,0,0.35);
@@ -460,10 +460,11 @@ html, body {
   width: 100%;
 }
 
-/* Make clicks hit .textpane, not child .line divs */
+/* Lines are clickable for cursor placement */
 .line {
   height: var(--line-h);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: text;
   white-space: pre;
   tab-size: 4;
   width: 100%;
@@ -1011,19 +1012,6 @@ pub fn app() -> Element {
                                 "Open - Ctrl+O"
                             }
 
-                            // Open directory
-                            button {
-                                class: "menu-item",
-                                onclick: move |_| {
-                                    file_open.set(false);
-                                    let current_dir2 = current_dir.clone();
-                                    let dir_contents2 = dir_contents.clone();
-                                    let status2 = status.clone();
-                                    spawn(async move { open_directory(current_dir2, dir_contents2, status2).await; });
-                                },
-                                "Open Directory - Ctrl+Shift+O"
-                            }
-
                             // Save
                             button {
                                 class: "menu-item",
@@ -1051,6 +1039,19 @@ pub fn app() -> Element {
                             }
 
                             div { class: "menu-sep" }
+
+                            // Open directory
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_open.set(false);
+                                    let current_dir2 = current_dir.clone();
+                                    let dir_contents2 = dir_contents.clone();
+                                    let status2 = status.clone();
+                                    spawn(async move { open_directory(current_dir2, dir_contents2, status2).await; });
+                                },
+                                "Open Directory - Ctrl+Shift+O"
+                            }
 
                             // Close directory
                             button {
@@ -1415,40 +1416,6 @@ pub fn app() -> Element {
                             div {
                                 class: "textpane",
 
-                                onclick: move |e| {
-                                    let p = e.data().coordinates().element();
-                                    // Convert click position in the viewport into an absolute document position.
-                                    // Don't try to infer absolute coords from a single "y" when the DOM is virtualized.
-                                    let view_start_line = ((scroll_top() / line_px()).floor() as isize).max(0) as usize;
-                                    let local_y = (p.y - PAD_Y_PX).max(0.0);
-                                    let clicked_line = view_start_line + (local_y / line_px()).floor() as usize;
-
-                                    let view_start_col = ((scroll_left() / char_px()).floor() as isize).max(0) as usize;
-                                    let local_x = ((p.x - PAD_X_PX) + CLICK_COL_BIAS_PX).max(0.0);
-                                    let clicked_col = view_start_col + (local_x / char_px()).floor() as usize;
-
-                                    set_active_tab_editor(tabs.clone(), active_tab.clone(), |t| {
-                                        let s = &mut t.editor;
-                                        if s.lines.is_empty() {
-                                            lines_mut(s).push(String::new());
-                                        }
-
-                                        let mut line = clicked_line;
-
-                                        if line >= s.lines.len() {
-                                            line = s.lines.len() - 1;
-                                        }
-
-                                        let mut col = clicked_col;
-
-                                        let max_col = s.lines[line].len();
-                                        if col > max_col {
-                                            col = max_col;
-                                        }
-
-                                        s.cursor = Cursor { line, col };
-                                    });
-                                },
 
                                 // caret
                                 {
@@ -1481,11 +1448,33 @@ pub fn app() -> Element {
                                         div { style: "height: {top_h}px;" }
                                         for i in start..end {
                                             {
+                                                let line_index = i;
                                                 let line = &s.lines[i];
                                                 let spans = crate::syntax::highlight_line(&active_language, line);
                                                 rsx!(
                                                     div {
                                                         class: if i == s.cursor.line { "line active" } else { "line" },
+                                                        onclick: {
+                                                            let tabs2 = tabs.clone();
+                                                            let act2 = active_tab.clone();
+                                                            move |e| {
+                                                                let p = e.data().coordinates().element();
+                                                                let view_start_col = ((scroll_left() / char_px()).floor() as isize).max(0) as usize;
+                                                                let local_x = (p.x + CLICK_COL_BIAS_PX).max(0.0);
+                                                                let clicked_col = view_start_col + (local_x / char_px()).floor() as usize;
+                                                                set_active_tab_editor(tabs2.clone(), act2.clone(), |t| {
+                                                                    let s = &mut t.editor;
+                                                                    if s.lines.is_empty() {
+                                                                        lines_mut(s).push(String::new());
+                                                                    }
+                                                                    let line = line_index.min(s.lines.len() - 1);
+                                                                    let mut col = clicked_col;
+                                                                    let max_col = s.lines[line].len();
+                                                                    if col > max_col { col = max_col; }
+                                                                    s.cursor = Cursor { line, col };
+                                                                });
+                                                            }
+                                                        },
                                                         for sp in spans {
                                                             span { style: "color: {sp.color};", "{sp.text}" }
                                                         }

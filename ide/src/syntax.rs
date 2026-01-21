@@ -91,6 +91,7 @@ pub fn detect_language_from_path(path: &Path) -> String {
         "ook" => "ook",
         "chef" => "chef",
         "unl" => "unlambda",
+        "arnoldc" | "arn" | "ac" => "arnoldc",
         _ => "plain",
     }
     .to_string()

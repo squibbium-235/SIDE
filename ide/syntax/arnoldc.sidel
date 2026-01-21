@@ -1,0 +1,37 @@
+default_color = "#D4D4D4"
+
+[[rule]]
+name = "comment_hash"
+pattern = "(?m)#.*$"
+color = "#6A9955"
+priority = 200
+
+[[rule]]
+name = "comment_slash"
+pattern = "(?m)//.*$"
+color = "#6A9955"
+priority = 200
+
+[[rule]]
+name = "string_double"
+pattern = ""(?:\\.|[^"\\])*""
+color = "#CE9178"
+priority = 195
+
+[[rule]]
+name = "arnold_keywords"
+pattern = "(?m)(?<![A-Za-z0-9_])(?:I WANT TO ASK YOU A BUNCH OF QUESTIONS AND I WANT TO HAVE THEM ANSWERED IMMEDIATELY|I NEED YOUR CLOTHES YOUR BOOTS AND YOUR MOTORCYCLE|BECAUSE I'M GOING TO SAY PLEASE|YOU HAVE NO RESPECT FOR LOGIC|WHAT THE FUCK DID I DO WRONG|LISTEN TO ME VERY CAREFULLY|YOU ARE NOT YOU YOU ARE ME|LET OFF SOME STEAM BENNET|YOU HAVE BEEN TERMINATED|CONSIDER THAT A DIVORCE|HERE IS MY INVITATION|GIVE THESE PEOPLE AIR|HASTA LA VISTA, BABY|GET YOUR ASS TO MARS|HEY CHRISTMAS TREE|GET TO THE CHOPPER|TALK TO THE HAND|HE HAD TO SPLIT|IT'S SHOWTIME|YOU SET US UP|YOU'RE FIRED|I LET HIM GO|STICK AROUND|I'LL BE BACK|@NO PROBLEMO|ENOUGH TALK|KNOCK KNOCK|DO IT NOW|GET DOWN|BULLSHIT|@I LIED|GET UP|CHILL)(?![A-Za-z0-9_])"
+color = "#C586C0"
+priority = 190
+
+[[rule]]
+name = "number"
+pattern = "(?<![A-Za-z0-9_])\d+(?![A-Za-z0-9_])"
+color = "#B5CEA8"
+priority = 180
+
+[[rule]]
+name = "identifier"
+pattern = "(?<![A-Za-z0-9_])[a-z_][a-z0-9_]*(?![A-Za-z0-9_])"
+color = "#9CDCFE"
+priority = 170

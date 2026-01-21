@@ -2,6 +2,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use dioxus::prelude::*;
 use rfd::AsyncFileDialog;
 use std::{path::PathBuf, sync::Arc};
+use semver::Version;
+use std::time::Duration;
 
 mod syntax;
 
@@ -198,6 +200,41 @@ fn close_directory(
     current_dir.set(None);
     dir_contents.set(Vec::new());
     status.set("Directory closed".to_string());
+}
+
+
+// version checking
+
+async fn fetch_current_ver_remote(raw_current_ver_url: &str) -> Result<Version, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("SIDE-update-check/1.0")
+        .timeout(Duration::from_secs(6))
+        .build()
+        .map_err(|e| format!("reqwest client: {e}"))?;
+
+    let text = client
+        .get(raw_current_ver_url)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("HTTP status: {e}"))?
+        .text()
+        .await
+        .map_err(|e| format!("Read body: {e}"))?;
+    
+        let s = text.trim().trim_start_matches("v").trim();
+
+        Version::parse(s).map_err(|e| format!("Bad remote version '{s}': {e}"))
+}
+
+async fn check_for_update_current_ver(raw_current_ver_url: &str) -> Result<Option<Version>, String> {
+    let local = Version::parse(env!("CARGO_PKG_VERSION"))
+        .map_err(|e| format!("Bad local version: {e}"))?;
+
+    let remote = fetch_current_ver_remote(raw_current_ver_url).await?;
+
+    Ok((remote > local).then_some(remote))
 }
 
 /// Build CSS + bundled font
@@ -694,6 +731,24 @@ html, body {
   background: #0b0d12;
 }
 
+.update-indicator{
+  margin-left: 12px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #ddd;
+  background: rgba(255,255,255,0.08);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+}
+
+.update-indicator.warn{
+  background: rgba(255,160,0,0.12);
+  color: #ffcc80;
+}
+
 :root {
   color-scheme: dark;
 }
@@ -909,6 +964,11 @@ fn close_tab_immediately(mut tabs: Signal<Vec<Tab>>, mut active_tab: Signal<usiz
 pub fn app() -> Element {
     let css = bundled_css();
 
+    // Update Checking
+    let mut update_available = use_signal(|| false);
+    let mut update_latest = use_signal(|| String::new());
+    let mut update_err = use_signal(|| String::new());
+
     // Tabs
     let tabs = use_signal(|| vec![Tab::new_untitled(1)]);
     let mut active_tab = use_signal(|| 0usize);
@@ -955,6 +1015,36 @@ pub fn app() -> Element {
     let _active_path = tabs()
         .get(active_idx)
         .and_then(|t| t.path.clone());
+
+    use_effect(move || {
+        let url = "https://raw.githubusercontent.com/<USER>/<REPO>/<BRANCH>/ide/current.ver";
+
+        spawn(async move {
+            loop {
+                match check_for_update_current_ver(url).await {
+                    Ok(Some(v)) => {
+                        update_available.set(true);
+                        update_latest.set(v.to_string());
+                        update_err.set(String::new());
+                    }
+                    Ok(None) => {
+                        update_available.set(false);
+                        update_latest.set(String::new());
+                        update_err.set(String::new());
+                    }
+                    Err(e) => {
+                        // Don’t crash because GitHub or Wi-Fi is having a moment.
+                        update_err.set(e);
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_secs(60 * 60)).await; // hourly
+            }
+        });
+
+        (|| ())()
+    });
+
 
     rsx! {
         style { "{css}" }
@@ -1088,6 +1178,16 @@ pub fn app() -> Element {
 
                 div { class: "file-indicator", "{active_title}" }
                 div { class: "file-indicator", "{status()}" }
+
+                if update_available() {
+                    div { class: "update-indicator",
+                        "Update avaliable: v{update_latest()} (you're on v{env!(\"CARGO_PKG_VERSION\")})"
+                    }
+                } else if !update_err().is_empty() {
+                    div { class: "update-indicator warn",
+                        "Update check failed"
+                    }
+                }
             }
 
             // ===== Tabs =====

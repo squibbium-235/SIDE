@@ -1,0 +1,208 @@
+default_color = "#D4D4D4"
+
+# PyGyat (Python with rizz) syntax highlighting
+# PyGyat is a Python preprocessor that replaces certain Python keywords/operators
+# with meme vocabulary. This file highlights both normal Python constructs and
+# the PyGyat replacements.
+
+# -----------------------------
+# Comments
+# -----------------------------
+[[rule]]
+name = "comment"
+pattern = "#.*$"
+color = "#6A9955"
+priority = 200
+
+# -----------------------------
+# Decorators
+# -----------------------------
+[[rule]]
+name = "decorator"
+pattern = "@[A-Za-z_][A-Za-z0-9_\\.]*"
+color = "#C586C0"
+priority = 190
+
+# -----------------------------
+# Docstrings / triple strings (common cases)
+# -----------------------------
+[[rule]]
+name = "docstring_start"
+pattern = "(?m)^\\s*(\"\"\"|''')"
+color = "#4FC1FF"
+priority = 185
+
+[[rule]]
+name = "triple_string_singleline"
+pattern = "(\"\"\"[^\\n]*\"\"\"|'''[^\\n]*''')"
+color = "#CE9178"
+priority = 184
+
+# -----------------------------
+# Strings (with prefixes)
+# -----------------------------
+[[rule]]
+name = "string_prefixed_double"
+pattern = "\\b(?i:[furb]{1,3})\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 180
+
+[[rule]]
+name = "string_prefixed_single"
+pattern = "\\b(?i:[furb]{1,3})'([^'\\\\]|\\\\.)*'"
+color = "#CE9178"
+priority = 179
+
+[[rule]]
+name = "string_double"
+pattern = "\"([^\"\\\\]|\\\\.)*\""
+color = "#CE9178"
+priority = 178
+
+[[rule]]
+name = "string_single"
+pattern = "'([^'\\\\]|\\\\.)*'"
+color = "#CE9178"
+priority = 177
+
+# -----------------------------
+# PyGyat multi-word keywords (match before single-word rules)
+# -----------------------------
+[[rule]]
+name = "pygyat_keyword_phrase"
+pattern = "(?<!\\w)(chat is this real|yo chat|only in ohio|let him cook|lock in|fanum tax|its giving|hawk|tuah|spit on that thang|just put the fries in the bag bro|pause no diddy)(?!\\w)"
+color = "#569CD6"
+priority = 175
+
+# -----------------------------
+# PyGyat single-word keywords / literals
+# -----------------------------
+[[rule]]
+name = "pygyat_keywords"
+pattern = "\\b(bop|rizz|yap|Aura|Cooked|glaze|skibidi|mewing|edge|sus|crashout|diddy|pookie|ahh|GOAT|motion|delulu|pause|NPC|pluh|unc|huzz|sigma|beta|twin|mog|demure)\\b"
+color = "#569CD6"
+priority = 174
+
+# -----------------------------
+# Operators and comparisons (PyGyat extras)
+# -----------------------------
+[[rule]]
+name = "pygyat_ops"
+pattern = "(?<!\\w)(sigma twin|beta twin)(?!\\w)"
+color = "#D4D4D4"
+priority = 173
+
+# -----------------------------
+# Python keywords and literals
+# (PyGyat keeps the rest of Python, but mapped keywords may be disallowed by the compiler.)
+# -----------------------------
+[[rule]]
+name = "keyword"
+pattern = "\\b(None|True|False|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|match|case)\\b"
+color = "#569CD6"
+priority = 170
+
+# -----------------------------
+# Builtins + common exceptions (includes some PyGyat-mapped builtins)
+# -----------------------------
+[[rule]]
+name = "builtins"
+pattern = "\\b(abs|all|any|ascii|bin|bool|breakpoint|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|exec|filter|float|format|frozenset|getattr|globals|hasattr|hash|help|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|memoryview|min|next|object|oct|open|ord|pow|print|property|range|repr|reversed|round|set|setattr|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip|yap|mog|demure)\\b"
+color = "#4EC9B0"
+priority = 165
+
+[[rule]]
+name = "exceptions"
+pattern = "\\b(Exception|BaseException|ValueError|TypeError|KeyError|IndexError|AttributeError|RuntimeError|NotImplementedError|ImportError|ModuleNotFoundError|OSError|IOError|FileNotFoundError|PermissionError|StopIteration|AssertionError)\\b"
+color = "#4EC9B0"
+priority = 164
+
+# -----------------------------
+# Function and class names (support both Python and PyGyat 'bop' / 'skibidi')
+# -----------------------------
+[[rule]]
+name = "def_name_python"
+pattern = "\\bdef\\s+([A-Za-z_][A-Za-z0-9_]*)"
+color = "#DCDCAA"
+priority = 160
+
+[[rule]]
+name = "def_name_pygyat"
+pattern = "\\bbop\\s+([A-Za-z_][A-Za-z0-9_]*)"
+color = "#DCDCAA"
+priority = 159
+
+[[rule]]
+name = "class_name_python"
+pattern = "\\bclass\\s+([A-Za-z_][A-Za-z0-9_]*)"
+color = "#4EC9B0"
+priority = 158
+
+[[rule]]
+name = "class_name_pygyat"
+pattern = "\\bskibidi\\s+([A-Za-z_][A-Za-z0-9_]*)"
+color = "#4EC9B0"
+priority = 157
+
+# -----------------------------
+# Imports (Python + PyGyat 'glaze' / 'lock in')
+# -----------------------------
+[[rule]]
+name = "import_from_python"
+pattern = "\\bfrom\\s+[A-Za-z_][A-Za-z0-9_\\.]*\\b"
+color = "#9CDCFE"
+priority = 150
+
+[[rule]]
+name = "import_mod_python"
+pattern = "\\bimport\\s+[A-Za-z_][A-Za-z0-9_\\.]*\\b"
+color = "#9CDCFE"
+priority = 149
+
+[[rule]]
+name = "import_from_pygyat"
+pattern = "\\block in\\s+[A-Za-z_][A-Za-z0-9_\\.]*\\b"
+color = "#9CDCFE"
+priority = 148
+
+[[rule]]
+name = "import_mod_pygyat"
+pattern = "\\bglaze\\s+[A-Za-z_][A-Za-z0-9_\\.]*\\b"
+color = "#9CDCFE"
+priority = 147
+
+# -----------------------------
+# Constants (heuristic)
+# -----------------------------
+[[rule]]
+name = "constant"
+pattern = "\\b[A-Z][A-Z0-9_]{2,}\\b"
+color = "#DCDCAA"
+priority = 140
+
+# -----------------------------
+# Numbers (int/float/hex/bin/oct)
+# -----------------------------
+[[rule]]
+name = "number_hex"
+pattern = "\\b0[xX][0-9a-fA-F_]+\\b"
+color = "#B5CEA8"
+priority = 130
+
+[[rule]]
+name = "number_bin"
+pattern = "\\b0[bB][01_]+\\b"
+color = "#B5CEA8"
+priority = 129
+
+[[rule]]
+name = "number_oct"
+pattern = "\\b0[oO][0-7_]+\\b"
+color = "#B5CEA8"
+priority = 128
+
+[[rule]]
+name = "number"
+pattern = "\\b\\d+(?:_\\d+)*(?:\\.\\d+(?:_\\d+)*)?(?:[eE][+-]?\\d+)?\\b"
+color = "#B5CEA8"
+priority = 127

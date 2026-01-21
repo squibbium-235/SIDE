@@ -1,0 +1,139 @@
+default_color = "#D4D4D4"
+
+# Befunge-98 / Funge-98 (2D) syntax highlighting
+# Befunge-family programs are a 2D grid of single-character instructions.
+# This highlights core Befunge-93 ops plus the Funge-98 additions:
+#   a-f hex digits, ; jump-over marker, j/k/q/z flow ops, ' fetch / s store,
+#   n clear stack, { } u stack-stack ops, x absolute vector, w compare,
+#   i/o file I/O, = execute, y sysinfo, A-Z fingerprints.
+
+# ---------------- Program end ----------------
+[[rule]]
+name = "end"
+pattern = "@"
+color = "#4FC1FF"
+priority = 320
+
+# ---------------- Strings ----------------
+# Stringmode is toggled with ". This highlights "..." on a line.
+[[rule]]
+name = "string"
+pattern = "\"[^\"]*\""
+color = "#CE9178"
+priority = 310
+
+# ---------------- Comment / insulation marker ----------------
+# ; jumps over everything until the next ;
+[[rule]]
+name = "jump_over_marker"
+pattern = ";"
+color = "#6A9955"
+priority = 305
+
+# ---------------- Digits / hex digits ----------------
+[[rule]]
+name = "digit"
+pattern = "[0-9]"
+color = "#B5CEA8"
+priority = 290
+
+[[rule]]
+name = "hex_digit"
+pattern = "[a-f]"
+color = "#B5CEA8"
+priority = 289
+
+# ---------------- Direction / turning ----------------
+[[rule]]
+name = "arrows"
+pattern = "[<>^v]"
+color = "#569CD6"
+priority = 280
+
+[[rule]]
+name = "turn_left_right"
+pattern = "[\\[\\]]"
+color = "#569CD6"
+priority = 279
+
+# ---------------- Decision / comparisons ----------------
+[[rule]]
+name = "ifs"
+pattern = "[_|]"
+color = "#C586C0"
+priority = 275
+
+[[rule]]
+name = "compare"
+pattern = "[w`!]"
+color = "#C586C0"
+priority = 274
+
+# ---------------- Flow control ----------------
+# ? random dir, # trampoline, j jump forward, k iterate, q quit, z explicit nop, t spawn (concurrent), r reverse
+[[rule]]
+name = "flow"
+pattern = "[?#jktrqz]"
+color = "#C586C0"
+priority = 270
+
+# ---------------- Vector / modes ----------------
+# x sets absolute delta vector
+[[rule]]
+name = "vector"
+pattern = "x"
+color = "#4EC9B0"
+priority = 268
+
+# ---------------- Stack / stack-stack ops ----------------
+# : dup, \\ swap, $ pop, n clear stack, { } blocks, u transfer between stacks
+[[rule]]
+name = "stack_ops"
+pattern = "[:\\\\$n{}u]"
+color = "#4EC9B0"
+priority = 265
+
+# ---------------- Arithmetic ----------------
+[[rule]]
+name = "arith"
+pattern = "[-+*/%]"
+color = "#B5CEA8"
+priority = 260
+
+# ---------------- I/O ----------------
+# . output int, , output char, & input int, ~ input char
+[[rule]]
+name = "io"
+pattern = "[.,&~]"
+color = "#DCDCAA"
+priority = 255
+
+# ---------------- Storage / reflection ----------------
+# g get, p put, ' fetch next char, s store next char
+[[rule]]
+name = "storage"
+pattern = "[gp]"
+color = "#9CDCFE"
+priority = 250
+
+[[rule]]
+name = "fetch_store_char"
+pattern = "['s]"
+color = "#9CDCFE"
+priority = 249
+
+# ---------------- System / environment ----------------
+# i/o file I/O, = execute, y sysinfo
+[[rule]]
+name = "system"
+pattern = "[io=y]"
+color = "#DCDCAA"
+priority = 245
+
+# ---------------- Fingerprints ----------------
+# A-Z are dynamically rebound by fingerprints (otherwise act like reflect)
+[[rule]]
+name = "fingerprints"
+pattern = "[A-Z]"
+color = "#C586C0"
+priority = 240

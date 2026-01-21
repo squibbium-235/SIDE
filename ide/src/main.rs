@@ -1017,7 +1017,7 @@ pub fn app() -> Element {
         .and_then(|t| t.path.clone());
 
     use_effect(move || {
-        let url = "https://raw.githubusercontent.com/<USER>/<REPO>/<BRANCH>/ide/current.ver";
+        let url = "https://raw.githubusercontent.com/squibbium-235/SIDE/refs/heads/main/ide/current.ver";
 
         spawn(async move {
             loop {

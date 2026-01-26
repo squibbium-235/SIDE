@@ -1,3 +1,4 @@
+use include_dir::{include_dir, Dir};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
@@ -10,6 +11,9 @@ use std::{
 
 static SYNTAX_CACHE: Lazy<Mutex<HashMap<String, Syntax>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+// Embed syntax definitions into the binary (portable exe).
+static SIDEL_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/syntax");
 
 #[derive(Debug, Clone)]
 pub struct Syntax {
@@ -36,6 +40,7 @@ pub struct HighlightSpan {
 struct SidelFile {
     #[serde(default = "default_color")]
     default_color: String,
+    // IMPORTANT: your .sidel files use [[rule]] (singular)
     #[serde(default)]
     rule: Vec<SidelRule>,
 }
@@ -56,10 +61,6 @@ fn default_color() -> String {
 
 fn default_priority() -> i32 {
     0
-}
-
-pub fn syntax_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("syntax")
 }
 
 pub fn detect_language_from_path(path: &Path) -> String {
@@ -91,10 +92,66 @@ pub fn detect_language_from_path(path: &Path) -> String {
         "ook" => "ook",
         "chef" => "chef",
         "unl" => "unlambda",
-        "arnoldc" | "arn" | "ac" => "arnoldc",
+        "arnoldc" => "arnoldc",
+        "pygyat" => "pygyat",
         _ => "plain",
     }
     .to_string()
+}
+
+fn read_embedded_sidel(language: &str) -> Option<&'static str> {
+    let filename = format!("{language}.sidel");
+    SIDEL_DIR.get_file(filename)?.contents_utf8()
+}
+
+fn disk_sidel_candidates(language: &str) -> Vec<PathBuf> {
+    let filename = format!("{language}.sidel");
+    let mut v = Vec::new();
+
+    // Best for `cargo run` when CWD is the crate dir.
+    v.push(PathBuf::from("syntax").join(&filename));
+
+    // If someone DOES ship a syntax folder next to the exe, allow that too.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            v.push(dir.join("syntax").join(&filename));
+        }
+    }
+
+    // Debug-only absolute path (handy if running from odd working dirs).
+    #[cfg(debug_assertions)]
+    {
+        v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("syntax").join(&filename));
+    }
+
+    v
+}
+
+/// Load a `.sidel` file:
+/// - Optional override via env var SIDE_SYNTAX_DIR
+/// - In debug builds, prefer disk for fast iteration
+/// - Always fall back to embedded so release builds work anywhere
+fn load_sidel_text(language: &str) -> Option<String> {
+    // User override (works in debug + release)
+    if let Ok(dir) = std::env::var("SIDE_SYNTAX_DIR") {
+        let p = PathBuf::from(dir).join(format!("{language}.sidel"));
+        if let Ok(s) = fs::read_to_string(p) {
+            return Some(s);
+        }
+    }
+
+    // Dev-mode: prefer reading from disk (edits without recompiling)
+    #[cfg(debug_assertions)]
+    {
+        for p in disk_sidel_candidates(language) {
+            if let Ok(s) = fs::read_to_string(&p) {
+                return Some(s);
+            }
+        }
+    }
+
+    // Fallback: embedded (portable exe)
+    read_embedded_sidel(language).map(|s| s.to_string())
 }
 
 pub fn load_syntax(language: &str) -> Syntax {
@@ -102,11 +159,9 @@ pub fn load_syntax(language: &str) -> Syntax {
         return hit;
     }
 
-    let path = syntax_dir().join(format!("{language}.sidel"));
-
-    let syntax = match fs::read_to_string(&path) {
-        Ok(content) => parse_sidel(&content).unwrap_or_else(|_| fallback_syntax()),
-        Err(_) => fallback_syntax(),
+    let syntax = match load_sidel_text(language) {
+        Some(content) => parse_sidel(&content).unwrap_or_else(|_| fallback_syntax()),
+        None => fallback_syntax(),
     };
 
     SYNTAX_CACHE
@@ -150,45 +205,50 @@ fn parse_sidel(toml_text: &str) -> Result<Syntax, toml::de::Error> {
 pub fn highlight_line(language: &str, line: &str) -> Vec<HighlightSpan> {
     let syn = load_syntax(language);
 
-    if syn.rules.is_empty() || line.is_empty() {
-        return vec![HighlightSpan {
-            text: line.to_string(),
-            color: syn.default_color,
-        }];
-    }
-
-    let bytes = line.as_bytes();
-    let mut color_at: Vec<Option<&str>> = vec![None; bytes.len()];
+    let mut spans = vec![HighlightSpan {
+        text: line.to_string(),
+        color: syn.default_color.clone(),
+    }];
 
     for rule in &syn.rules {
-        for m in rule.regex.find_iter(line) {
-            let start = m.start();
-            let end = m.end().min(bytes.len());
-            for i in start..end {
-                if color_at[i].is_none() {
-                    color_at[i] = Some(rule.color.as_str());
-                }
-            }
-        }
-    }
+        let mut next = Vec::new();
 
-    let mut spans = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        let cur_color = color_at[i].unwrap_or(syn.default_color.as_str());
-        let mut j = i + 1;
-        while j < bytes.len() {
-            let c = color_at[j].unwrap_or(syn.default_color.as_str());
-            if c != cur_color {
-                break;
+        for span in spans {
+            // Don’t recolor already-colored spans
+            if span.color != syn.default_color {
+                next.push(span);
+                continue;
             }
-            j += 1;
+
+            let mut last = 0usize;
+
+            for m in rule.regex.find_iter(&span.text) {
+                let (s, e) = (m.start(), m.end());
+
+                if s > last {
+                    next.push(HighlightSpan {
+                        text: span.text[last..s].to_string(),
+                        color: syn.default_color.clone(),
+                    });
+                }
+
+                next.push(HighlightSpan {
+                    text: span.text[s..e].to_string(),
+                    color: rule.color.clone(),
+                });
+
+                last = e;
+            }
+
+            if last < span.text.len() {
+                next.push(HighlightSpan {
+                    text: span.text[last..].to_string(),
+                    color: syn.default_color.clone(),
+                });
+            }
         }
-        spans.push(HighlightSpan {
-            text: line[i..j].to_string(),
-            color: cur_color.to_string(),
-        });
-        i = j;
+
+        spans = next;
     }
 
     spans

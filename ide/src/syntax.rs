@@ -3,17 +3,24 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Deserialize;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
 };
 
+// Embed the syntax folder (portable exe).
+static SIDEL_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/syntax");
+
+// Cache compiled syntax rules
 static SYNTAX_CACHE: Lazy<Mutex<HashMap<String, Syntax>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-// Embed syntax definitions into the binary (portable exe).
-static SIDEL_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/syntax");
+// Load the manifest once
+static MANIFEST: Lazy<ManifestData> = Lazy::new(|| load_manifest().unwrap_or_else(|_| ManifestData {
+    ext_to_lang: HashMap::new(),
+    languages: HashSet::new(),
+}));
 
 #[derive(Debug, Clone)]
 pub struct Syntax {
@@ -63,40 +70,91 @@ fn default_priority() -> i32 {
     0
 }
 
-pub fn detect_language_from_path(path: &Path) -> String {
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
+#[derive(Debug, Deserialize)]
+struct ManifestFile {
+    #[serde(default)]
+    language: Vec<ManifestLang>,
+}
 
-    match ext.as_str() {
-        "rs" => "rust",
-        "py" | "pyw" => "python",
-        "js" => "javascript",
-        "ts" => "typescript",
-        "html" => "html",
-        "css" => "css",
-        "json" => "json",
-        "md" => "markdown",
-        "sidel" => "sidel",
-        "c" | "h" => "c",
-        "toml" => "toml",
-        "cpp" | "hpp" | "hh" | "hxx" | "cc" | "cxx" => "cpp",
-        "bf" | "b" => "brainfuck",
-        "hc" => "holyc",
-        "lol" | "lols" => "lolcode",
-        "b93" | "be" | "befunge" => "befunge93",
-        "b98" => "befunge98",
-        "i" | "3i" | "4i" | "7i" => "intercal",
-        "ook" => "ook",
-        "chef" => "chef",
-        "unl" => "unlambda",
-        "arnoldc" => "arnoldc",
-        "pygyat" => "pygyat",
-        _ => "plain",
+#[derive(Debug, Deserialize)]
+struct ManifestLang {
+    name: String,
+    #[serde(default)]
+    extensions: Vec<String>,
+}
+
+struct ManifestData {
+    ext_to_lang: HashMap<String, String>,
+    languages: HashSet<String>,
+}
+
+/// Read embedded file text by name.
+fn embedded_text(name: &str) -> Option<&'static str> {
+    SIDEL_DIR.get_file(name)?.contents_utf8()
+}
+
+/// Disk candidates for debug convenience.
+fn disk_candidates(rel_path: &str) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+
+    // 1) Relative to current working directory
+    v.push(PathBuf::from(rel_path));
+
+    // 2) Relative to the executable folder
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            v.push(dir.join(rel_path));
+        }
     }
-    .to_string()
+
+    // 3) Debug-only: absolute path to the crate
+    #[cfg(debug_assertions)]
+    {
+        v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path));
+    }
+
+    v
+}
+
+fn load_manifest_text() -> Option<String> {
+    // Optional override
+    if let Ok(dir) = std::env::var("SIDE_SYNTAX_DIR") {
+        let p = PathBuf::from(dir).join("manifest.toml");
+        if let Ok(s) = fs::read_to_string(p) {
+            return Some(s);
+        }
+    }
+
+    // Debug: prefer disk so you can tweak without recompiling
+    #[cfg(debug_assertions)]
+    {
+        for p in disk_candidates("syntax/manifest.toml") {
+            if let Ok(s) = fs::read_to_string(&p) {
+                return Some(s);
+            }
+        }
+    }
+
+    // Fallback: embedded
+    embedded_text("manifest.toml").map(|s| s.to_string())
+}
+
+fn load_manifest() -> Result<ManifestData, String> {
+    let text = load_manifest_text().ok_or("manifest.toml not found")?;
+    let parsed: ManifestFile =
+        toml::from_str(&text).map_err(|e| format!("manifest.toml parse error: {e}"))?;
+
+    let mut ext_to_lang = HashMap::new();
+    let mut languages = HashSet::new();
+
+    for lang in parsed.language {
+        languages.insert(lang.name.clone());
+        for ext in lang.extensions {
+            ext_to_lang.insert(ext.to_ascii_lowercase(), lang.name.clone());
+        }
+    }
+
+    Ok(ManifestData { ext_to_lang, languages })
 }
 
 fn read_embedded_sidel(language: &str) -> Option<&'static str> {
@@ -104,35 +162,8 @@ fn read_embedded_sidel(language: &str) -> Option<&'static str> {
     SIDEL_DIR.get_file(filename)?.contents_utf8()
 }
 
-fn disk_sidel_candidates(language: &str) -> Vec<PathBuf> {
-    let filename = format!("{language}.sidel");
-    let mut v = Vec::new();
-
-    // Best for `cargo run` when CWD is the crate dir.
-    v.push(PathBuf::from("syntax").join(&filename));
-
-    // If someone DOES ship a syntax folder next to the exe, allow that too.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            v.push(dir.join("syntax").join(&filename));
-        }
-    }
-
-    // Debug-only absolute path (handy if running from odd working dirs).
-    #[cfg(debug_assertions)]
-    {
-        v.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("syntax").join(&filename));
-    }
-
-    v
-}
-
-/// Load a `.sidel` file:
-/// - Optional override via env var SIDE_SYNTAX_DIR
-/// - In debug builds, prefer disk for fast iteration
-/// - Always fall back to embedded so release builds work anywhere
 fn load_sidel_text(language: &str) -> Option<String> {
-    // User override (works in debug + release)
+    // Optional override
     if let Ok(dir) = std::env::var("SIDE_SYNTAX_DIR") {
         let p = PathBuf::from(dir).join(format!("{language}.sidel"));
         if let Ok(s) = fs::read_to_string(p) {
@@ -140,23 +171,47 @@ fn load_sidel_text(language: &str) -> Option<String> {
         }
     }
 
-    // Dev-mode: prefer reading from disk (edits without recompiling)
+    // Debug: prefer disk so edits don't require a rebuild
     #[cfg(debug_assertions)]
     {
-        for p in disk_sidel_candidates(language) {
+        let rel = format!("syntax/{language}.sidel");
+        for p in disk_candidates(&rel) {
             if let Ok(s) = fs::read_to_string(&p) {
                 return Some(s);
             }
         }
     }
 
-    // Fallback: embedded (portable exe)
+    // Fallback: embedded
     read_embedded_sidel(language).map(|s| s.to_string())
+}
+
+pub fn detect_language_from_path(path: &Path) -> String {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if ext.is_empty() {
+        return "plain".to_string();
+    }
+
+    MANIFEST
+        .ext_to_lang
+        .get(&ext)
+        .cloned()
+        .unwrap_or_else(|| "plain".to_string())
 }
 
 pub fn load_syntax(language: &str) -> Syntax {
     if let Some(hit) = SYNTAX_CACHE.lock().unwrap().get(language).cloned() {
         return hit;
+    }
+
+    // If the manifest doesn't know this language, don't even bother trying.
+    if !MANIFEST.languages.contains(language) {
+        return fallback_syntax();
     }
 
     let syntax = match load_sidel_text(language) {
@@ -205,50 +260,45 @@ fn parse_sidel(toml_text: &str) -> Result<Syntax, toml::de::Error> {
 pub fn highlight_line(language: &str, line: &str) -> Vec<HighlightSpan> {
     let syn = load_syntax(language);
 
-    let mut spans = vec![HighlightSpan {
-        text: line.to_string(),
-        color: syn.default_color.clone(),
-    }];
+    if syn.rules.is_empty() || line.is_empty() {
+        return vec![HighlightSpan {
+            text: line.to_string(),
+            color: syn.default_color,
+        }];
+    }
+
+    let bytes = line.as_bytes();
+    let mut color_at: Vec<Option<&str>> = vec![None; bytes.len()];
 
     for rule in &syn.rules {
-        let mut next = Vec::new();
-
-        for span in spans {
-            // Don’t recolor already-colored spans
-            if span.color != syn.default_color {
-                next.push(span);
-                continue;
-            }
-
-            let mut last = 0usize;
-
-            for m in rule.regex.find_iter(&span.text) {
-                let (s, e) = (m.start(), m.end());
-
-                if s > last {
-                    next.push(HighlightSpan {
-                        text: span.text[last..s].to_string(),
-                        color: syn.default_color.clone(),
-                    });
+        for m in rule.regex.find_iter(line) {
+            let start = m.start();
+            let end = m.end().min(bytes.len());
+            for i in start..end {
+                if color_at[i].is_none() {
+                    color_at[i] = Some(rule.color.as_str());
                 }
-
-                next.push(HighlightSpan {
-                    text: span.text[s..e].to_string(),
-                    color: rule.color.clone(),
-                });
-
-                last = e;
-            }
-
-            if last < span.text.len() {
-                next.push(HighlightSpan {
-                    text: span.text[last..].to_string(),
-                    color: syn.default_color.clone(),
-                });
             }
         }
+    }
 
-        spans = next;
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let cur_color = color_at[i].unwrap_or(syn.default_color.as_str());
+        let mut j = i + 1;
+        while j < bytes.len() {
+            let c = color_at[j].unwrap_or(syn.default_color.as_str());
+            if c != cur_color {
+                break;
+            }
+            j += 1;
+        }
+        spans.push(HighlightSpan {
+            text: line[i..j].to_string(),
+            color: cur_color.to_string(),
+        });
+        i = j;
     }
 
     spans

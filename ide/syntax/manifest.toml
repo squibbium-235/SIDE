@@ -1,0 +1,90 @@
+# Each entry maps file extensions to a language name.
+# The language name must match a .sidel file in this folder, like rust.sidel.
+
+[[language]]
+name = "rust"
+extensions = ["rs"]
+
+[[language]]
+name = "python"
+extensions = ["py", "pyw"]
+
+[[language]]
+name = "javascript"
+extensions = ["js"]
+
+[[language]]
+name = "typescript"
+extensions = ["ts"]
+
+[[language]]
+name = "html"
+extensions = ["html"]
+
+[[language]]
+name = "css"
+extensions = ["css"]
+
+[[language]]
+name = "json"
+extensions = ["json"]
+
+[[language]]
+name = "markdown"
+extensions = ["md"]
+
+[[language]]
+name = "sidel"
+extensions = ["sidel"]
+
+[[language]]
+name = "c"
+extensions = ["c", "h"]
+
+[[language]]
+name = "toml"
+extensions = ["toml"]
+
+[[language]]
+name = "cpp"
+extensions = ["cpp", "hpp", "hh", "hxx", "cc", "cxx"]
+
+[[language]]
+name = "brainfuck"
+extensions = ["bf", "b"]
+
+[[language]]
+name = "holyc"
+extensions = ["hc"]
+
+[[language]]
+name = "lolcode"
+extensions = ["lol", "lols"]
+
+[[language]]
+name = "befunge93"
+extensions = ["b93", "be", "befunge"]
+
+[[language]]
+name = "befunge98"
+extensions = ["b98"]
+
+[[language]]
+name = "intercal"
+extensions = ["i", "3i", "4i", "7i"]
+
+[[language]]
+name = "ook"
+extensions = ["ook"]
+
+[[language]]
+name = "chef"
+extensions = ["chef"]
+
+[[language]]
+name = "unlambda"
+extensions = ["unl"]
+
+[[language]]
+name = "pygyat"
+extensions = ["pygyat"]

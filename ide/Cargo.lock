@@ -3,6 +3,24 @@
 version = 4
 
 [[package]]
+name = "SIDE"
+version = "0.4.1"
+dependencies = [
+ "base64",
+ "dioxus",
+ "dioxus-desktop",
+ "include_dir",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "rfd 0.17.1",
+ "semver",
+ "serde",
+ "tokio",
+ "toml 0.9.10+spec-1.1.0",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1908,24 +1926,6 @@ dependencies = [
  "zerofrom",
  "zerotrie",
  "zerovec",
-]
-
-[[package]]
-name = "ide"
-version = "0.4.1"
-dependencies = [
- "base64",
- "dioxus",
- "dioxus-desktop",
- "include_dir",
- "once_cell",
- "regex",
- "reqwest",
- "rfd 0.17.1",
- "semver",
- "serde",
- "tokio",
- "toml 0.9.10+spec-1.1.0",
 ]
 
 [[package]]

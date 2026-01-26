@@ -20,23 +20,23 @@ SIDE is a small desktop code editor built with Rust and Dioxus Desktop. It focus
     - Fill in the TOML file
     - Update `ide/syntax/manifest.toml` with the new language
       - `manifest.toml` section example
-      - ```toml
-      [[language]]
-      name = "<sidel file name>"
-      extensions = ["<file extention>", "<file extention 2>"]
-      ```
+        ```toml
+        [[language]]
+        name = "<sidel file name>"
+        extensions = ["<file extention>", "<file extention 2>"]
+        ```
     - Compile with ```bash cargo run```
 
-  - Typical Structire
-  - ```toml
-  default_color = "#D4D4D4"
+  - Typical Structure
+    ```toml
+    default_color = "#D4D4D4"
 
-  [[rule]]
-  name = "Keyword"
-  pattern = "\\b(fn|let|pub|struct)\\b"
-  color = "#C586C0"
-  priority = 10
-  ```
+    [[rule]]
+    name = "Keyword"
+    pattern = "\\b(fn|let|pub|struct)\\b"
+    color = "#C586C0"
+    priority = 10
+    ```
 
 
 ## Project structure

@@ -1,12 +1,12 @@
 # SIDE naming scheme: Maakunnat + maakuntajärvet (short codenames)
 
-Major versions use Finland’s maakunnata (regions). Each major has a codename anchor based on that region’s maakuntajärvi.
+Major versions use Finland’s lakes. Each major has a codename anchor based on that region’s regional lake.
 Some official lake names are long, so SIDE uses a short display codename where needed.
 
 Versions:
-- Patch: x.y.Z where Z = 0–9
-- Minor: x.Y.z where Y = 0–9 (10 patches per minor)
-- Major: X.y.z where X is the “maakunta era” (10 minors per major)
+- Patch: x.y.Z where Z = 0–9 (10 patches per minor)
+- Minor: x.Y.z where Y = 0–9 (10 minors per major, unless there is a major feature upgrade)
+- Major: X.y.z where X is the lake codename
 - The 0.x.x series ends at 0.9.9
 
 Display format suggestion:

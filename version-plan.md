@@ -1,22 +1,22 @@
 # SIDE naming scheme: Maakunnat + maakuntajärvet (short codenames)
 
-Major versions use Finland’s maakunnat (regions). Each major has a codename anchor based on that region’s maakuntajärvi.
+Major versions use Finland’s maakunnata (regions). Each major has a codename anchor based on that region’s maakuntajärvi.
 Some official lake names are long, so SIDE uses a short display codename where needed.
 
-Version cadence:
+Versions:
 - Patch: x.y.Z where Z = 0–9
 - Minor: x.Y.z where Y = 0–9 (10 patches per minor)
 - Major: X.y.z where X is the “maakunta era” (10 minors per major)
 - The 0.x.x series ends at 0.9.9
 
 Display format suggestion:
-- SIDE 18.4.1 "Uusimaa: Tuusulanjärvi Salmi"
+- ```SIDE 18.4.1 - Tuusulanjärvi Salmi```
 
 ## Major map (short lake codenames)
 
 Note: Satakunta and Varsinais-Suomi share the same maakuntajärvi.
 
-| Major | Maakunta (FI) | Lake codename (short) | Official lake name (if different) |
+| Major | Maakunta (FI) | Lake codename (short) | Official lake name |
 |---:|---|---|---|
 | 0 | Esisarja | Proto | |
 | 1 | Ahvenanmaa | Kyrksundet | Östra och Västra Kyrksundet |

@@ -1859,7 +1859,7 @@ fn main() {
         .with_menu(None)
         .with_window(
             WindowBuilder::new()
-                .with_title("SIDE")
+                .with_title("SIDE 0.4.1 - Proto Salmi")
                 .with_decorations(true)
                 .with_always_on_top(false)
                 .with_inner_size(LogicalSize::new(800, 600))

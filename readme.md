@@ -51,12 +51,12 @@ SIDE is a small desktop code editor built with Rust and Dioxus Desktop. It focus
 
 ## Requirements
 
-- Windows 10 and up
+- Windows 10 and up (only compiles on windows for now)
 - MS WebView2 Runtime
 - Whatever windows requires
 
 ### Runtime (Windows)
-- Microsoft WebView2 Runtime is required by Dioxus Desktop on Windows. Many machines already have it, but “isolated” systems might not.
+- Microsoft WebView2 Runtime is required by Dioxus Desktop on Windows. If your computer has the chromium version of edge, it has this.
 - If you build with the MSVC toolchain, the target machine may also need the Visual C++ runtime.
 
 ### Build

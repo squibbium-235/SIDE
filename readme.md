@@ -74,17 +74,23 @@ SIDE is a small desktop code editor built with Rust and Dioxus Desktop. It focus
 
 - Linux (and any *nix hopefully)
   - Debian / Ubuntu
-    - `sudo apt-get update`
-    - `sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libegl1-mesa libgl1-mesa-dri mesa-vulkan-drivers`
+    - ```bash
+      sudo apt-get update
+      sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libegl1-mesa libgl1-mesa-dri mesa-vulkan-drivers`
+      ```
       - (These were the minimum requirements I needed to get it to build with WSL)
 
   - Arch / Manjaro
-    - `sudo pacman -Syu --needed pkgconf wayland libxkbcommon gtk3 webkit2gtk-4.1 xdotool openssl mesa`
+    - ```bash
+      sudo pacman -Syu --needed pkgconf wayland libxkbcommon gtk3 webkit2gtk-4.1 xdotool openssl mesa
+      ```
       - (Untested)
     
   - Fedora / RHEL
     - Fedora
-      - `sudo dnf install -y pkgconf-pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkit2gtk4.1-devel xdotool-devel openssl-devel mesa-libEGL mesa-dri-drivers mesa-vulkan-drivers`
+      - ```bash
+        sudo dnf install -y pkgconf-pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkit2gtk4.1-devel xdotool-devel openssl-devel mesa-libEGL mesa-dri-drivers mesa-vulkan-drivers
+        ```
     - RHEL, Rocky and Alma
       - Ensure CRB is enabled for `-devel` packages
         - `sudo dnf config-manager --set-enabled crb`

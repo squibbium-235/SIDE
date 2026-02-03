@@ -1,6 +1,6 @@
 ## SIDE NOW COMPILES FOR LINUX
 
-- SIDE now compiles and runs on linux, there won't be any binary releases until I can work out how to make appimages or .deb and .rpm files, instructions for compilation here
+- SIDE now compiles and runs on linux, there won't be any binary releases until I can work out how to make appimages or .deb and .rpm files, instructions for compilation [here](#build)
 
 # SIDE
 

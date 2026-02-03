@@ -93,34 +93,54 @@ SIDE is a small desktop code editor built with Rust and Dioxus Desktop. It focus
         ```
     - RHEL, Rocky and Alma
       - Ensure CRB is enabled for `-devel` packages
-        - `sudo dnf config-manager --set-enabled crb`
-      - `sudo dnf install -y pkgconf-pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkit2gtk4.1-devel xdotool-devel openssl-devel mesa-libEGL mesa-dri-drivers mesa-vulkan-drivers`
+        - ```bash
+          sudo dnf config-manager --set-enabled crb
+          ```
+      - ```bash
+        sudo dnf install -y pkgconf-pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkit2gtk4.1-devel xdotool-devel openssl-devel mesa-libEGL mesa-dri-drivers mesa-vulkan-drivers
+        ```
 
   - openSUSE
-    - `sudo zypper install -y pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkit2gtk-4_1-devel xdotool-devel libopenssl-devel Mesa-libEGL1 Mesa-dri`
+    - ```bash
+      sudo zypper install -y pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkit2gtk-4_1-devel xdotool-devel libopenssl-devel Mesa-libEGL1 Mesa-dri
+      ```
 
   - Alpine
-    - `sudo apk add pkgconf wayland-dev libxkbcommon-dev gtk+3.0-dev webkit2gtk-dev xdotool-dev openssl-dev mesa-egl mesa-dri-gallium`
+    - ```bash
+      sudo apk add pkgconf wayland-dev libxkbcommon-dev gtk+3.0-dev webkit2gtk-dev xdotool-dev openssl-dev mesa-egl mesa-dri-gallium
+      ```
      - (UNTESTED! Some rust crates may fail because alpine uses musl)
 
   - NixOS
-    - `nix-shell -p pkg-config wayland libxkbcommon gtk3 webkitgtk_4_1 xdotool openssl mesa`
+    - ```bash
+      nix-shell -p pkg-config wayland libxkbcommon gtk3 webkitgtk_4_1 xdotool openssl mesa
+      ```
     - OR add those packages to the thingy file
 
   - Void
-    - `sudo xbps-install -S pkg-config wayland-devel libxkbcommon-devel gtk+3-devel webkit2gtk-devel xdotool-devel openssl-devel mesa mesa-dri`
-
+    - ```bash
+      sudo xbps-install -S pkg-config wayland-devel libxkbcommon-devel gtk+3-devel webkit2gtk-devel xdotool-devel openssl-devel mesa mesa-dri
+      ```
+  
   - Solus
-    - `sudo eopkg install -y pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkitgtk-devel xdotool-devel openssl-devel mesa`
+    - ```bash
+      sudo eopkg install -y pkg-config wayland-devel libxkbcommon-devel gtk3-devel webkitgtk-devel xdotool-devel openssl-devel mesa
+      ```
 
   - Gentoo
-    - `sudo emerge --ask dev-util/pkgconf dev-libs/wayland x11-libs/libxkbcommon x11-libs/gtk+:3 net-libs/webkit-gtk x11-misc/xdotool dev-libs/openssl media-libs/mesa`
+    - ```bash
+      sudo emerge --ask dev-util/pkgconf dev-libs/wayland x11-libs/libxkbcommon x11-libs/gtk+:3 net-libs/webkit-gtk x11-misc/xdotool dev-libs/openssl media-libs/mesa
+      ```
 
   - Slackware
-    - `sbopkg -i pkg-config wayland libxkbcommon gtk+3 webkit2gtk xdotool openssl mesa`
+    - ```bash
+      sbopkg -i pkg-config wayland libxkbcommon gtk+3 webkit2gtk xdotool openssl mesa
+      ```
 
   - ALL
-    - `cargo build --release`
+    - ```bash
+      cargo build --release
+      ```
 
   - If these fail, make an issue and I will attempt to fix and update the readme
 

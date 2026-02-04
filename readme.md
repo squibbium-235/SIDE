@@ -75,7 +75,7 @@ SIDE is a small desktop code editor built with Rust and Dioxus Desktop. It focus
   - Debian / Ubuntu
     - ```bash
       sudo apt-get update
-      sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libegl1-mesa libgl1-mesa-dri mesa-vulkan-drivers`
+      sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libegl1-mesa libgl1-mesa-dri mesa-vulkan-drivers
       ```
       - (These were the minimum requirements I needed to get it to build with WSL)
 

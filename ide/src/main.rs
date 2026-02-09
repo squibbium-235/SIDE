@@ -12,6 +12,7 @@ use semver::Version;
 use std::time::Duration;
 
 mod syntax;
+mod terminal;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Cursor {
@@ -334,6 +335,97 @@ fn bundled_css() -> String {
 @font-face {
   font-family: "BundledMono";
   src: url("data:font/ttf;base64,__B64__") format("truetype");
+}
+
+
+/* ===== Bottom bar + terminal ===== */
+.bottom-bar{
+  height: 38px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(10,12,18,0.95);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+}
+
+.bottom-bar-button{
+  background: rgba(255,255,255,0.08);
+  color: #e8e8e8;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.bottom-bar-button:hover{
+  background: rgba(255,255,255,0.12);
+}
+
+.terminal-panel{
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: #0b0d12;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.terminal-resize-handle{
+  height: 6px;
+  cursor: ns-resize;
+  background: rgba(255,255,255,0.06);
+}
+.terminal-resize-handle:hover{
+  background: rgba(255,255,255,0.10);
+}
+
+.terminal-inner{
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.terminal-output{
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+  font-family: "BundledMono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  color: #d7d7d7;
+}
+
+.terminal-input-row{
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.terminal-prompt{
+  font-family: "BundledMono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: #9aa6c4;
+  font-size: 12.5px;
+}
+
+.terminal-input{
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  padding: 7px 10px;
+  color: #e8e8e8;
+  outline: none;
+  font-family: "BundledMono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12.5px;
+}
+
+.terminal-input:focus{
+  border-color: rgba(120,160,255,0.35);
 }
 
 :root {
@@ -1083,6 +1175,14 @@ pub fn app() -> Element {
     let mut scroll_left = use_signal(|| 0.0f64);
     let mut viewport_h = use_signal(|| 600.0f64);
 
+    // Terminal panel (bottom)
+    let mut terminal_open = use_signal(|| false);
+    let mut terminal_height = use_signal(|| 240.0f64);
+    let mut terminal_resizing = use_signal(|| false);
+    let mut terminal_resize_start_y = use_signal(|| 0.0f64);
+    let mut terminal_resize_start_h = use_signal(|| 240.0f64);
+
+
     // derived
     let active_idx = active_tab();
     let active_title = tabs()
@@ -1162,6 +1262,20 @@ rsx! {
                     file_open.set(false);
                 }
             },
+
+            // Terminal resize drag handling (global)
+            onmousemove: move |e: MouseEvent| {
+                if !terminal_resizing() {
+                    return;
+                }
+                let y = e.data().coordinates().client().y;
+                let dy = terminal_resize_start_y() - y; // drag up => bigger
+                let new_h = (terminal_resize_start_h() + dy).clamp(120.0, 700.0);
+                terminal_height.set(new_h);
+                e.prevent_default();
+            },
+            onmouseup: move |_| terminal_resizing.set(false),
+            onmouseleave: move |_| terminal_resizing.set(false),
 
             // ===== Menu bar =====
             div { class: "menubar",
@@ -1703,6 +1817,42 @@ rsx! {
                 }
             }
 
+
+            // ===== Bottom bar =====
+            div { class: "bottom-bar",
+                button {
+                    class: "bottom-bar-button",
+                    onclick: move |_| {
+                        let new_state = !terminal_open();
+                        terminal_open.set(new_state);
+                        if new_state {
+                            terminal::ensure_started();
+                        }
+                    },
+                    if terminal_open() { "Hide Terminal" } else { "Terminal" }
+                }
+            }
+
+            // ===== Terminal panel =====
+            if terminal_open() {
+                div {
+                    class: "terminal-panel",
+                    style: "height: {terminal_height()}px;",
+
+                    // resize handle
+                    div {
+                        class: "terminal-resize-handle",
+                        onmousedown: move |e: MouseEvent| {
+                            terminal_resizing.set(true);
+                            terminal_resize_start_y.set(e.data().coordinates().client().y);
+                            terminal_resize_start_h.set(terminal_height());
+                            e.prevent_default();
+                        }
+                    }
+
+                    terminal::TerminalView {}
+                }
+            }
             // ===== Confirm modal =====
             if confirm_open() {
                 div {
